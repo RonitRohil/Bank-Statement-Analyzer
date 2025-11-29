@@ -1,0 +1,14 @@
+backend/venv
+frontend/node_modules
+.vscode
+backend/__pycache__
+backend/app/routes/__pycache__
+backend/app/models/__pycache__
+backend/app/config/__pycache__
+backend/app/controllers/__pycache__
+.DS_Store
+.env
+backend/.env
+frontend/.env
+backend/app/__pycache__
+backend/uploads

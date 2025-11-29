@@ -1,0 +1,5 @@
+{
+  "name": "Bank Statement Analyzer",
+  "description": "A dashboard to analyze bank statements via a backend API, visualizing transactions, merchant insights, and account details.",
+  "requestFramePermissions": []
+}
