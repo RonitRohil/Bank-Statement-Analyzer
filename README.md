@@ -314,6 +314,24 @@ curl --location 'http://localhost:5000/api/analyze/bank/statement' \
 }
 ```
 
+
+## 📊 Screenshots
+
+- Upload Screen
+
+[Upload Screen](/screenshots/image.png)
+
+- Result Table
+
+[Transactions Table](/screenshots/image_1.png)
+
+- Summary Cards
+
+[Summary Cards](/screenshots/image_2.png)
+
+[Summary Cards](/screenshots/image_3.png)
+
+
 ## 🚧 Future Improvements
 
 - OCR for scanned PDFs
@@ -328,9 +346,11 @@ curl --location 'http://localhost:5000/api/analyze/bank/statement' \
 
 Backend Engineer | Python | Node.js | Financial Automation | PDF/Excel Parsing
 
-GitHub: https://github.com/RonitRohil
+**GitHub:** https://github.com/RonitRohil
 
-LinkedIn: https://www.linkedin.com/in/ronitjain0402/
+**LinkedIn:** https://www.linkedin.com/in/ronitjain0402/
+
+**E-Mail:** ronitrohil@gmail.com
 
 ## ⭐ Support
 
