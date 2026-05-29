@@ -1,3 +1,4 @@
+import logging
 from flask import Flask
 from dotenv import load_dotenv
 from flask_cors import CORS
@@ -6,6 +7,12 @@ from app.routes.routes import analyze_statement_bp
 from app.config.config import Config
 
 load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+
 
 def create_app():
     app = Flask(__name__)
