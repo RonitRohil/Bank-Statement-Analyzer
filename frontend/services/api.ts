@@ -1,6 +1,7 @@
 import { ApiResponse } from '../types';
 
-const API_URL = 'http://localhost:5000/api/analyze/bank/statement';
+const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:5000';
+const API_URL = `${API_BASE}/api/analyze/bank/statement`;
 
 export const uploadBankStatement = async (file: File): Promise<ApiResponse> => {
   const formData = new FormData();

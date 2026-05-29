@@ -1,3 +1,4 @@
+import logging
 from flask import jsonify
 import pandas as pd
 import pdfplumber
@@ -6,13 +7,11 @@ import os
 from datetime import datetime
 import requests
 from collections import defaultdict
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.preprocessing import MultiLabelBinarizer
-from sklearn.ensemble import RandomForestClassifier
-
 
 from app.constants.constants import get_status_code
 from app.config.config import Config
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -91,7 +90,7 @@ class BankStatementAnalyzer:
             return None
 
         if isinstance(val, (pd.Series, dict)):
-            print("[parse_amount] Skipping non-primitive value: %s", type(val))
+            logger.debug("[parse_amount] Skipping non-primitive value: %s", type(val))
             return None
 
         try:
@@ -99,7 +98,7 @@ class BankStatementAnalyzer:
 
             # Reject date-like formats (e.g. '2025-02-05', '2025/02/05', '2025-02-05 00:00:00')
             if re.match(r"\d{4}[-/]\d{2}[-/]\d{2}", val_str):
-                print("[parse_amount] Rejected date-like value: '%s'", val_str)
+                logger.debug("[parse_amount] Rejected date-like value: '%s'", val_str)
                 return None
 
             # Remove currency and non-numeric symbols
@@ -126,12 +125,10 @@ class BankStatementAnalyzer:
             return amount
 
         except ValueError:
-            print(
-                "[parse_amount] Could not parse amount: '%s'. Returning None.", val
-            )
+            logger.debug("[parse_amount] Could not parse amount: '%s'. Returning None.", val)
             return None
         except Exception as e:
-            print("[parse_amount] Unexpected error parsing '%s'", val)
+            logger.debug("[parse_amount] Unexpected error parsing '%s': %s", val, e)
             return None
 
     @staticmethod
@@ -186,9 +183,9 @@ class BankStatementAnalyzer:
                     if any(keyword in cleaned_cell for keyword in header_keywords):
                         match_count += 1
             if match_count >= 2:  # Threshold: at least 2 matching keywords
-                print("Detected header row at index: %s", i)
+                logger.debug("Detected header row at index: %s", i)
                 return i
-        print("No clear header row detected, defaulting to row 0.")
+        logger.debug("No clear header row detected, defaulting to row 0.")
         return 0  # Fallback to row 0
 
     def _get_statement_range_from_df(self, df):
@@ -205,7 +202,7 @@ class BankStatementAnalyzer:
                     "to": valid_dates.max().strftime("%Y-%m-%d"),
                 }
 
-        print("Could not determine statement date range.")
+        logger.debug("Could not determine statement date range.")
         return {}
 
     def extract_transactions(self):
@@ -216,7 +213,7 @@ class BankStatementAnalyzer:
         elif file_extension == ".pdf":
             return self._process_pdf_transactions()
         else:
-            print("Unsupported file type: %s", file_extension)
+            logger.warning("Unsupported file type: %s", file_extension)
             return {
                 "success": 0,
                 "status_code": get_status_code("BAD_REQUEST"),
@@ -242,7 +239,7 @@ class BankStatementAnalyzer:
             # Drop unnamed columns (often created by pandas for empty columns)
             df = df.loc[:, ~df.columns.str.contains("^Unnamed", case=False, na=False)]
             df.columns = [self.clean_column_name(col) for col in df.columns]
-            print("Excel/CSV Normalized Columns: %s", df.columns.tolist())
+            logger.debug("Excel/CSV Normalized Columns: %s", df.columns.tolist())
 
             # Detect Key Columns
             transaction_date_col = self.find_column(
@@ -297,14 +294,10 @@ class BankStatementAnalyzer:
 
             required_cols = [transaction_date_col, narration_col]
             if not all(required_cols) or not (credit_col or debit_col or amount_col):
-                print(
-                    "Missing critical columns for transaction parsing in %s. Date: %s, Narration: %s, Amount: %s/%s/%s",
-                    self.file_path,
-                    transaction_date_col,
-                    narration_col,
-                    credit_col,
-                    debit_col,
-                    amount_col,
+                logger.warning(
+                    "Missing critical columns in %s. Date: %s, Narration: %s, Amount: %s/%s/%s",
+                    self.file_path, transaction_date_col, narration_col,
+                    credit_col, debit_col, amount_col,
                 )
                 return {
                     "success": 0,
@@ -314,9 +307,7 @@ class BankStatementAnalyzer:
                 }
 
             transactions = []
-            verification_tasks = []
-            txn_peer_map = []  
-            
+
             for index, row in df.iterrows():
                 try:
                     amount = None
@@ -346,7 +337,7 @@ class BankStatementAnalyzer:
                         and debit is None
                         and general_amount is None
                     ):
-                        print("Skipping row %s: No valid amount found.", index)
+                        logger.debug("Skipping row %s: No valid amount found.", index)
                         continue
 
                     narration = (
@@ -356,9 +347,7 @@ class BankStatementAnalyzer:
                     )
 
                     if not narration and amount is None:
-                        print(
-                            "Skipping row %s: No narration or amount present.", index
-                        )
+                        logger.debug("Skipping row %s: No narration or amount present.", index)
                         continue
 
                     transaction_date_str = (
@@ -366,9 +355,7 @@ class BankStatementAnalyzer:
                         if pd.notna(row.get(transaction_date_col))
                         else None
                     )
-                    parsed_date = parsed_date = self.normalize_date(
-                        transaction_date_str, index
-                    )
+                    parsed_date = self.normalize_date(transaction_date_str, index)
 
                     balance = self.parse_amount(row.get(balance_col))
                     account = (
@@ -378,13 +365,6 @@ class BankStatementAnalyzer:
                     )
 
                     narration_details = self.analyze_narration_details(narration)
-
-                    # Attempt verification only if we have both account and IFSC
-                    peer_account = narration_details.get("receiver_details", {}).get(
-                        "account"
-                    )
-                    peer_ifsc = narration_details.get("bank_peer")
-                    print("Account Details ---> %s %s", peer_account, peer_ifsc)
 
                     txn_obj = {
                         "transaction_date": parsed_date,
@@ -398,7 +378,7 @@ class BankStatementAnalyzer:
                     transactions.append(txn_obj)
 
                 except Exception as inner_err:
-                    print("Skipping row %s due to parsing error", index)
+                    logger.warning("Skipping row %s due to parsing error: %s", index, inner_err, exc_info=True)
 
             meta_info = self._extract_metadata_from_df(raw_df)
 
@@ -435,9 +415,7 @@ class BankStatementAnalyzer:
             }
 
         except Exception as e:
-            print(
-                "Failed to analyze Excel/CSV bank statement: %s", self.file_path
-            )
+            logger.error("Failed to analyze Excel/CSV bank statement: %s — %s", self.file_path, e, exc_info=True)
             return {
                 "success": 0,
                 "status_code": get_status_code("INTERNAL_SERVER_ERROR"),
@@ -469,25 +447,18 @@ class BankStatementAnalyzer:
                                     self.clean_column_name(col) for col in df.columns
                                 ]
                                 tables_df_list.append(df)
-                                print(
-                                    "Page %s, Table %s: Successfully extracted with columns: %s",
-                                    page_num + 1,
-                                    table_idx + 1,
-                                    df.columns.tolist(),
+                                logger.debug(
+                                    "Page %s, Table %s extracted with columns: %s",
+                                    page_num + 1, table_idx + 1, df.columns.tolist(),
                                 )
                             except Exception as df_create_err:
-                                print(
+                                logger.warning(
                                     "Could not create DataFrame from PDF table on page %s, table %s: %s",
-                                    page_num + 1,
-                                    table_idx + 1,
-                                    df_create_err,
+                                    page_num + 1, table_idx + 1, df_create_err,
                                 )
 
             if not tables_df_list:
-                print(
-                    "No tables found or extracted successfully from PDF: %s",
-                    self.file_path,
-                )
+                logger.warning("No tables found or extracted from PDF: %s", self.file_path)
                 meta_info = self._extract_metadata_from_text(all_text)
                 return {
                     "success": 0,
@@ -552,13 +523,14 @@ class BankStatementAnalyzer:
                 )
 
                 required_cols_pdf = [date_col, narration_col]
-                if not all(required_cols_pdf) and not (
+                if not all(required_cols_pdf) or not (
                     credit_col or debit_col or amount_col
                 ):
-                    print(
-                        f"Skipping a PDF table due to missing critical columns. Date: {date_col}, Narration: {narration_col}, Amount: {credit_col}/{debit_col}/{amount_col}"
+                    logger.warning(
+                        "Skipping PDF table: missing critical columns. Date: %s, Narration: %s, Amount: %s/%s/%s",
+                        date_col, narration_col, credit_col, debit_col, amount_col,
                     )
-                    continue  # Skip this specific table if it lacks essential columns
+                    continue
 
                 for _, row in df.iterrows():
                     try:
@@ -586,9 +558,7 @@ class BankStatementAnalyzer:
                             and debit is None
                             and general_amount is None
                         ):
-                            print(
-                                "Skipping row: No amount information found in PDF table."
-                            )
+                            logger.debug("Skipping PDF row: no amount information found.")
                             continue
 
                         narration = (
@@ -597,9 +567,7 @@ class BankStatementAnalyzer:
                             else ""
                         )
                         if not narration and amount is None:
-                            print(
-                                "Skipping row: No narration or amount present in PDF table."
-                            )
+                            logger.debug("Skipping PDF row: no narration or amount present.")
                             continue
 
                         transaction_date_str = (
@@ -607,27 +575,7 @@ class BankStatementAnalyzer:
                             if pd.notna(row.get(date_col))
                             else None
                         )
-                        parsed_date = None
-                        if transaction_date_str:
-                            try:
-                                parsed_date = pd.to_datetime(
-                                    transaction_date_str, errors="coerce", dayfirst=True
-                                )
-                                if pd.isna(parsed_date):
-                                    print(
-                                        "Failed to parse date '%s' from PDF. Keeping original string.",
-                                        transaction_date_str,
-                                    )
-                                    parsed_date = transaction_date_str
-                                else:
-                                    parsed_date = parsed_date.strftime("%Y-%m-%d")
-                            except Exception as e:
-                                print(
-                                    "Error converting date '%s' from PDF: %s. Keeping original string.",
-                                    transaction_date_str,
-                                    e,
-                                )
-                                parsed_date = transaction_date_str
+                        parsed_date = self.normalize_date(transaction_date_str)
 
                         balance = self.parse_amount(row.get(balance_col))
                         account = (
@@ -650,12 +598,19 @@ class BankStatementAnalyzer:
                         transactions.append(txn_obj)
 
                     except Exception as row_err:
-                        print(
-                            "[PDF Table Row Skip] Error processing row: %s", row_err
-                        )
+                        logger.warning("Skipping PDF row due to error: %s", row_err, exc_info=True)
 
-            # Account metadata from full text (for more robust PDF metadata extraction)
+            # Account metadata from full text
             meta_info = self._extract_metadata_from_text(all_text)
+
+            # Score confidence for every transaction (consistent with Excel path)
+            for txn in transactions:
+                txn["confidence_score"] = self.calculate_confidence_score(txn)
+
+            overall_confidence = (
+                round(sum(t["confidence_score"] for t in transactions) / len(transactions), 2)
+                if transactions else 0.0
+            )
 
             return {
                 "success": 1,
@@ -664,14 +619,19 @@ class BankStatementAnalyzer:
                 "result": {
                     "account_info": meta_info,
                     "transactions": transactions,
-                    "merchant_insights": TransactionPatternTrainer().analyze(
-                        transactions
-                    ),
+                    "confidence_summary": {
+                        "overall_score": overall_confidence,
+                        "total_transactions": len(transactions),
+                        "high_confidence_txns": sum(
+                            1 for t in transactions if t["confidence_score"] >= 0.85
+                        ),
+                    },
+                    "merchant_insights": TransactionPatternTrainer().analyze(transactions),
                 },
             }
 
         except Exception as e:
-            print("Failed to analyze PDF bank statement: %s", self.file_path)
+            logger.error("Failed to analyze PDF bank statement: %s — %s", self.file_path, e, exc_info=True)
             return {
                 "success": 0,
                 "status_code": get_status_code("INTERNAL_SERVER_ERROR"),
@@ -719,13 +679,7 @@ class BankStatementAnalyzer:
             for fmt in possible_formats:
                 try:
                     parsed = datetime.strptime(date_input, fmt)
-                    print(
-                        "[Parsed] Row %s: '%s' → %s using %s",
-                        row_index,
-                        date_input,
-                        parsed.strftime("%Y-%m-%d"),
-                        fmt,
-                    )
+                    logger.debug("[Parsed] Row %s: '%s' → %s using %s", row_index, date_input, parsed.strftime("%Y-%m-%d"), fmt)
                     return parsed.strftime("%Y-%m-%d")
                 except ValueError:
                     continue
@@ -734,19 +688,12 @@ class BankStatementAnalyzer:
         try:
             parsed = pd.to_datetime(date_input, errors="coerce", dayfirst=False)
             if pd.notna(parsed):
-                print(
-                    "[Pandas Parsed] Row %s: '%s' → %s",
-                    row_index,
-                    date_input,
-                    parsed.strftime("%Y-%m-%d"),
-                )
+                logger.debug("[Pandas Parsed] Row %s: '%s' → %s", row_index, date_input, parsed.strftime("%Y-%m-%d"))
                 return parsed.strftime("%Y-%m-%d")
         except Exception as e:
-            print(
-                "[Fallback Error] Row %s: '%s' — %s", row_index, date_input, e
-            )
+            logger.debug("[Fallback Error] Row %s: '%s' — %s", row_index, date_input, e)
 
-        print("[Failed to Parse] Row %s: '%s'", row_index, date_input)
+        logger.warning("[Failed to Parse] Row %s: '%s'", row_index, date_input)
         return date_input
 
     def _extract_metadata_from_df(self, raw_df, max_lines=30):
@@ -776,16 +723,14 @@ class BankStatementAnalyzer:
                     df_for_dates
                 )
             except Exception as e:
-                print(
-                    "Could not determine statement range from excel for metadata: %s", e
-                )
+                logger.warning("Could not determine statement range from excel for metadata: %s", e)
                 metadata["statement_period"] = {}
 
-            print("Extracted Metadata: %s", metadata)
+            logger.debug("Extracted Metadata: %s", metadata)
             return metadata
 
         except Exception as e:
-            print("[Metadata Extraction Error - Excel/CSV]: %s", e)
+            logger.error("[Metadata Extraction Error - Excel/CSV]: %s", e, exc_info=True)
             return {}
 
     def _extract_metadata_from_text(self, text_blob):
@@ -870,7 +815,7 @@ class BankStatementAnalyzer:
         else:
             metadata["statement_period"] = {}
 
-        print("Extracted Metadata: %s", metadata)
+        logger.debug("Extracted Metadata: %s", metadata)
         return metadata
 
     @staticmethod
@@ -1170,9 +1115,7 @@ class BankStatementAnalyzer:
         try:
             response = requests.get(url, params=payload, headers=headers)
 
-            print(
-                f"[Pennyless API] Status Code: {response.status_code}, Response: {response.text}"
-            )
+            logger.debug("[Pennyless API] Status Code: %s", response.status_code)
 
             response.raise_for_status()
             response_json = response.json()
@@ -1335,113 +1278,6 @@ class TransactionPatternTrainer:
         return insights
 
 
-class EnhancedNarrationAnalyzer:
-    def analyze(self, narration):
-        # Use NER to extract entities
-        doc = self.nlp(narration)
-        entities = {"PERSON": [], "ORG": [], "MONEY": [], "DATE": [], "CARDINAL": []}
-
-        for ent in doc.ents:
-            if ent.label_ in entities:
-                entities[ent.label_].append(ent.text)
-
-        # Use word embeddings for similarity matching
-        embeddings = self.get_embeddings(narration)
-        similar_categories = self.find_similar_categories(embeddings)
-
-        return {
-            "entities": entities,
-            "suggested_categories": similar_categories,
-            "confidence": self.calculate_semantic_confidence(embeddings),
-        }
-
-
-class TransactionPatternLearner:
-    def learn_patterns(self, transactions):
-        # Group by merchants/categories
-        merchant_patterns = defaultdict(list)
-        for txn in transactions:
-            merchant = txn.get("merchant")
-            if merchant:
-                merchant_patterns[merchant].append(
-                    {
-                        "amount_range": (txn["amount"], txn["amount"]),
-                        "frequency": (
-                            "monthly" if self._is_monthly(txn) else "irregular"
-                        ),
-                        "day_of_month": txn["transaction_date"].day,
-                        "category": txn.get("category", []),
-                    }
-                )
-
-        # Analyze patterns
-        merchant_insights = {}
-        for merchant, patterns in merchant_patterns.items():
-            merchant_insights[merchant] = {
-                "typical_amount_range": self._get_amount_range(patterns),
-                "payment_frequency": self._get_dominant_frequency(patterns),
-                "preferred_days": self._get_preferred_days(patterns),
-                "common_categories": self._get_common_categories(patterns),
-            }
-
-        return merchant_insights
-
-
-class BalanceValidator:
-    def validate_running_balance(self, transactions):
-        sorted_txns = sorted(transactions, key=lambda x: x["transaction_date"])
-        running_balance = None
-        anomalies = []
-
-        for i, txn in enumerate(sorted_txns):
-            if txn.get("balance") is not None:
-                if running_balance is None:
-                    running_balance = txn["balance"]
-                else:
-                    expected_balance = (
-                        running_balance + txn["amount"]
-                        if txn["transaction_type"] == "CREDIT"
-                        else running_balance - txn["amount"]
-                    )
-                    if (
-                        abs(expected_balance - txn["balance"]) > 0.01
-                    ):  # Allow small float differences
-                        anomalies.append(
-                            {
-                                "transaction": txn,
-                                "expected_balance": expected_balance,
-                                "actual_balance": txn["balance"],
-                                "difference": abs(expected_balance - txn["balance"]),
-                            }
-                        )
-                running_balance = txn["balance"]
-
-        return anomalies
-
-
-class EnhancedConfidenceScorer:
-    def calculate_score(self, transaction):
-        base_score = self.calculate_base_score(transaction)
-        pattern_score = self.calculate_pattern_score(transaction)
-        semantic_score = self.calculate_semantic_score(transaction)
-        verification_score = self.calculate_verification_score(transaction)
-
-        weights = {"base": 0.4, "pattern": 0.2, "semantic": 0.2, "verification": 0.2}
-
-        final_score = (
-            base_score * weights["base"]
-            + pattern_score * weights["pattern"]
-            + semantic_score * weights["semantic"]
-            + verification_score * weights["verification"]
-        )
-
-        return {
-            "overall_score": round(final_score, 2),
-            "component_scores": {
-                "base_score": base_score,
-                "pattern_score": pattern_score,
-                "semantic_score": semantic_score,
-                "verification_score": verification_score,
-            },
-            "confidence_level": self.get_confidence_level(final_score),
-        }
+# NOTE: EnhancedNarrationAnalyzer, TransactionPatternLearner, BalanceValidator,
+# and EnhancedConfidenceScorer were removed — all were incomplete stubs never
+# called anywhere. Track planned ML/AI features as separate tickets.
