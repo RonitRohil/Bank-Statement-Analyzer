@@ -155,7 +155,7 @@ This avoids a big-bang rewrite.
 
 ## Action Items
 
-1. [ ] Create `backend-v2/` with FastAPI scaffold
+1. [x] Create `backend-v2/` with FastAPI scaffold
 2. [ ] Define Pydantic models for `Transaction`, `AccountInfo`, `AnalysisResult` (mirror existing `types.ts`)
 3. [ ] Port `POST /api/analyze/bank/statement` to FastAPI — wrap `BankStatementAnalyzer` in `asyncio.to_thread()`
 4. [ ] Add `GET /api/health` endpoint
