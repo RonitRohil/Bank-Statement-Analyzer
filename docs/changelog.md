@@ -5,6 +5,13 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-05-31 — BSA-03: Port POST /api/analyze/bank/statement to FastAPI
+**Type:** Feature (migration)
+**Change:** Added /api/analyze/bank/statement to FastAPI backend (backend-v2). BankStatementAnalyzer runs inside asyncio.to_thread() so CPU-bound parsing never blocks the event loop. File validation (extension whitelist, 20 MB size cap) and cleanup (finally-block unlink) mirror the Flask controller exactly. Flask backend unchanged and still running on port 5000.
+**Files affected:** backend-v2/app/routers/analyze.py (new), backend-v2/app/models/analyzer.py (new), backend-v2/app/main.py
+
+---
+
 ## 2026-05-31 — BSA-02: FastAPI scaffold (backend-v2/)
 **Type:** Feature (migration scaffold)
 **Change:** Created backend-v2/ with FastAPI app, pydantic-settings config, Pydantic schemas mirroring frontend types.ts, /api/health endpoint, Swagger UI at /docs. Flask backend unchanged and still running on port 5000.
