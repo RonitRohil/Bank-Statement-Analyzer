@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,10 +9,18 @@ from app.routers import health, analyze
 
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Bank Statement Analyzer v2 started on port 8000")
+    yield
+
+
 app = FastAPI(
     title="Bank Statement Analyzer API v2",
     description="Parses and analyzes bank statements (PDF, Excel, CSV) with transaction enrichment.",
     version="2.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -24,8 +33,3 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(analyze.router)
-
-
-@app.on_event("startup")
-async def on_startup():
-    logger.info("Bank Statement Analyzer v2 started on port 8000")

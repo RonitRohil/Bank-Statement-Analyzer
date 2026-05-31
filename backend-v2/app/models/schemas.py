@@ -3,7 +3,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class StatementPeriod(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, by_alias=True)
 
     from_date: Optional[str] = Field(None, alias="from")
     to_date: Optional[str] = Field(None, alias="to")
