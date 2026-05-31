@@ -5,6 +5,14 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-05-31 — TD-022 + TD-020: Delete dead Pennyless fn; fix .gitignore
+**Type:** Security cleanup + repo fix
+**TD-022:** Deleted verify_bank_account_with_pennyless — dead code shipping hardcoded identity data (name="stco", mobile="9999999999"). Never called; Config.INTEGRATION_URL and INTEGRATION_AUTH are defined but the fn should not live in the codebase until the integration is real.
+**TD-020:** Renamed .gitIgnore → .gitignore; added missing patterns for __pycache__, venv/, uploads/, node_modules/. Note: Windows filesystem is case-insensitive so the rename was done as delete-then-recreate.
+**Files affected:** backend/app/models/analyzeModel.py, .gitignore
+
+---
+
 ## 2026-05-31 — TD-001 Fix: requirements.txt re-encoded as UTF-8
 **Type:** Bug fix (reopened)
 **Root cause:** Fix was logged on 2026-05-29 but the file on disk was never rewritten; PowerShell or the editor re-saved as UTF-16-LE.
