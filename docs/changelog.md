@@ -5,6 +5,14 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-05-31 — TD-027: Add GET /api/health endpoint
+**Type:** Feature (monitoring)
+**Change:** Added /health route on the blueprint (resolves to GET /api/health) returning {"status": "ok", "service": "bank-statement-analyzer"}. Note: route is defined as /health (not /api/health) because the blueprint is registered with url_prefix="/api".
+**Reason:** Unblocks container health checks and uptime monitoring. Explicit ADR action item.
+**Files affected:** backend/app/routes/routes.py, docs/changelog.md
+
+---
+
 ## 2026-05-31 — TD-022 + TD-020: Delete dead Pennyless fn; fix .gitignore
 **Type:** Security cleanup + repo fix
 **TD-022:** Deleted verify_bank_account_with_pennyless — dead code shipping hardcoded identity data (name="stco", mobile="9999999999"). Never called; Config.INTEGRATION_URL and INTEGRATION_AUTH are defined but the fn should not live in the codebase until the integration is real.
