@@ -12,3 +12,12 @@ backend/.env
 frontend/.env
 backend/app/__pycache__
 backend/uploads
+__pycache__/
+*.pyc
+*.pyo
+venv/
+uploads/
+*.egg-info/
+dist/
+node_modules/
+frontend/dist/
