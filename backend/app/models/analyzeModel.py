@@ -112,7 +112,7 @@ class BankStatementAnalyzer:
 
             # Remove 'Cr.' or 'Dr.'
             val_str = re.sub(
-                r"\b(Cr\.?|Dr\.?)\b", "", val_str, flags=re.IGNORECASE
+                r"\b(?:Cr\.?|Dr\.?)", "", val_str, flags=re.IGNORECASE
             ).strip()
 
             # Handle negative in parentheses e.g., "(100.00)"

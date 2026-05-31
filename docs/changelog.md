@@ -5,6 +5,15 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-05-31 — TD-016: Stand up pytest with core unit tests
+**Type:** Testing infrastructure
+**Change:** Added pytest==8.3.5 + pytest-flask==1.3.0; test suites for parse_amount (9 cases), normalize_date (7 cases), analyze_narration_details (6 cases + 1 xfail), and /api/health. Added backend/conftest.py with Flask test client fixture. Result: 23 passed, 1 xfailed.
+**Bug found and fixed:** parse_amount Cr./Dr. regex had a trailing \b that cannot anchor after a non-word character (the dot) at end-of-string — only "Cr" was stripped, leaving a stray "." that broke float(). Fixed by removing the trailing \b from the substitution pattern.
+**xfail documented:** UPI structured match returns early before merchant detection — "UPI/.../AMAZON PAY/..." returns merchant=None. Marked xfail pending a fix.
+**Files affected:** backend/requirements.txt, backend/conftest.py, backend/tests/__init__.py, backend/tests/test_parse_amount.py, backend/tests/test_normalize_date.py, backend/tests/test_narration.py, backend/tests/test_health.py, backend/app/models/analyzeModel.py (regex fix)
+
+---
+
 ## 2026-05-31 — TD-027: Add GET /api/health endpoint
 **Type:** Feature (monitoring)
 **Change:** Added /health route on the blueprint (resolves to GET /api/health) returning {"status": "ok", "service": "bank-statement-analyzer"}. Note: route is defined as /health (not /api/health) because the blueprint is registered with url_prefix="/api".
