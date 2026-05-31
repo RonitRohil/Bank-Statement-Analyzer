@@ -1,10 +1,12 @@
 # Bank-Statement-Analyzer
 
-## PDF / Excel / CSV Parser • Flask API • React + TypeScript Frontend
+## PDF / Excel / CSV Parser • Flask + FastAPI • React + TypeScript Frontend
 
-This repository provides a complete bank statement analysis system built with a Flask backend and a React (TypeScript + Vite) frontend.
+This repository provides a complete bank statement analysis system. A React (TypeScript + Vite) frontend uploads statements to the backend, which extracts, normalizes, and enriches transactions from PDF, Excel, and CSV files.
 
-It extracts, normalizes, and analyzes transactions from financial documents including PDF, Excel, and CSV statements.
+**Two backends run in parallel during an incremental Flask → FastAPI migration:**
+- `backend/` — Flask 3.1.2 on port 5000 (original, production-stable)
+- `backend-v2/` — FastAPI 0.115 on port 8000 (async, Pydantic v2, Swagger UI at `/docs`)
 
 The system detects:
 
@@ -67,62 +69,59 @@ Each transaction is scored based on:
 ```
 BANK-STATEMENT-ANALYZER/
 │
-├── backend/
+├── backend/                        ← Flask v1 (port 5000)
 │   ├── app/
 │   │   ├── config/
 │   │   ├── constants/
-│   │   ├── controllers/
-│   │   │   ├── analyzeController.py
-│   │   ├── models/
-│   │   │   ├── analyzeModel.py
-│   │   ├── routes/
-│   │   │   ├── analyze.py
-│   │   ├── __init__.py
-│   ├── uploads/
+│   │   ├── controllers/analyzeController.py
+│   │   ├── models/analyzeModel.py
+│   │   ├── routes/routes.py
+│   │   └── __init__.py
+│   ├── tests/
 │   ├── requirements.txt
-│   ├── .env
-│   ├── run.py
+│   └── run.py
 │
-├── frontend/
+├── backend-v2/                     ← FastAPI v2 (port 8000) — migration target
+│   ├── app/
+│   │   ├── config/settings.py
+│   │   ├── models/
+│   │   │   ├── analyzer.py         ← BankStatementAnalyzer (ported from Flask)
+│   │   │   └── schemas.py          ← Pydantic v2 response models
+│   │   ├── routers/
+│   │   │   ├── health.py           ← GET /api/health
+│   │   │   └── analyze.py          ← POST /api/analyze/bank/statement
+│   │   └── main.py
+│   ├── requirements.txt
+│   └── run.py
+│
+├── frontend/                       ← React + TypeScript (port 3000)
 │   ├── src/
 │   │   ├── components/
 │   │   ├── services/
 │   │   ├── App.tsx
-│   │   ├── index.tsx
-│   ├── public/
+│   │   └── index.tsx
 │   ├── package.json
-│   ├── tsconfig.json
-│   ├── .env.local
+│   └── .env.local
 │
-├── samples/ (optional)
-│
+├── docs/                           ← Architecture, ADRs, changelog, study docs
 ├── README.md
 └── .gitignore
 ```
 
 
-## 🛠 Backend Setup (Flask)
+## 🛠 Backend Setup
 
-### 1. Go to backend folder
+### Flask backend (v1 — port 5000)
+
 ``` bash
 cd backend
-```
-
-### 2. Create and activate virtual environment
-``` bash
 python -m venv venv
-source venv/bin/activate        # macOS/Linux
 venv\Scripts\activate           # Windows
-```
-
-### 3. Install dependencies
-``` bash
 pip install -r requirements.txt
+python run.py
 ```
 
-### 4. Create .env file
-Example
-
+Create `backend/.env`:
 ```env
 FLASK_APP=run.py
 FLASK_ENV=development
@@ -130,18 +129,17 @@ CORS_URLS=["http://localhost:3000"]
 FLASK_DEBUG=True
 ```
 
-### 5. Run backend
-``` bash
-flask run 
-```
-
-or
+### FastAPI backend (v2 — port 8000)
 
 ``` bash
-python run.py
+cd backend-v2
+python -m venv venv
+venv\Scripts\activate           # Windows
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
 ```
 
-Backend will start at: 👉 http://localhost:5000
+Swagger UI at 👉 http://localhost:8000/docs
 
 ## 🎨 Frontend Setup (React + TypeScript)
 
@@ -332,13 +330,18 @@ curl --location 'http://localhost:5000/api/analyze/bank/statement' \
 [Summary Cards](/screenshots/image_3.png)
 
 
-## 🚧 Future Improvements
+## 🚧 Roadmap
 
-- OCR for scanned PDFs
-- Merchant categorization using ML
-- Insights dashboard (monthly spending, category charts)
-- Export parsed transactions to CSV/Excel
+**In progress:**
+- FastAPI migration (backend-v2) — analyze endpoint ported; frontend cutover pending
+- ML/LLM transaction categorization (BSA-04)
+
+**Planned:**
+- LLM-powered insights via Claude API (streaming SSE)
+- OCR for scanned PDFs (Tesseract / Azure Vision)
+- Export to CSV/Excel
 - User authentication
+- Balance validation (detect gaps in running balance)
 
 ## 👨‍💻 Author
 
