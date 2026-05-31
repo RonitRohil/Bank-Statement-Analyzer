@@ -1,9 +1,34 @@
 # Code Review Report — Bank Statement Analyzer
 
-**Date:** 2026-05-29  
-**Reviewed by:** Claude (Cowork)  
-**Scope:** Full codebase — backend (Python/Flask) + frontend (React/TypeScript)  
-**Verdict:** 🔴 **Request Changes** — several critical issues must be fixed before production use
+**Date:** 2026-05-30
+**Reviewed by:** Claude (Cowork)
+**Scope:** Full codebase as it stands *after* the Sprint-01 fixes — backend (Python/Flask) + frontend (React/TypeScript)
+**Verdict:** 🟠 **Request Changes** — one critical fix regressed/never landed; the rest are hardening items
+
+> This supersedes the 2026-05-29 review. The earlier review described the pre-fix codebase. Most Priority-1 items were genuinely fixed in code. **One was not** (see CR-01), which is the most important finding here.
+
+---
+
+## What got fixed since the last review ✅
+
+Verified by reading the current source, not the sprint notes:
+
+| Previous issue | Status | Evidence |
+|----------------|--------|----------|
+| `debug=True` hardcoded | ✅ Fixed | `run.py` now reads `FLASK_DEBUG` env, defaults `false` |
+| Uploaded files never deleted | ✅ Fixed | `analyzeController.py` deletes in a `finally` block |
+| No file size/extension validation | ✅ Fixed | Controller checks `ALLOWED_EXTENSIONS` + `MAX_UPLOAD_SIZE` |
+| Filename collisions / path traversal | ✅ Fixed | `secure_filename` + `uuid4` prefix |
+| `Config.INTEGRATION_URL/AUTH` undefined | ✅ Fixed | Now defined in `Config` with env defaults |
+| CORS wildcard default | ✅ Fixed | Defaults to `http://localhost:3000` |
+| 4 dead classes + `sklearn` imports | ✅ Fixed | Removed; replaced with a tracking comment |
+| `confidence_score` missing on PDF path | ✅ Fixed | Scoring loop now present in `_process_pdf_transactions` |
+| `required_cols_pdf` `and`→`or` bug | ✅ Fixed | PDF path now uses `or`, matching Excel path |
+| Double-assignment typo | ✅ Fixed | Single assignment now |
+| `print()` instead of `logging` | ✅ Fixed | `logger.*` throughout |
+| Frontend hardcoded API URL | ✅ Fixed | `api.ts` reads `VITE_API_URL` |
+
+Solid execution. The model file is down to ~1,280 readable lines and the controller is now genuinely clean.
 
 ---
 
@@ -11,252 +36,159 @@
 
 | # | File | Location | Issue | Severity |
 |---|------|----------|-------|----------|
-| 1 | `backend/requirements.txt` | entire file | UTF-16 encoded — `pip install -r requirements.txt` will fail on any standard environment | 🔴 Critical |
-| 2 | `backend/app/config/config.py` | `Config` class | `Config.INTEGRATION_URL` and `Config.INTEGRATION_AUTH` referenced in `analyzeModel.py` but never defined — raises `AttributeError` at runtime | 🔴 Critical |
-| 3 | `backend/run.py` | line 4 | `debug=True` hard-coded — exposes Werkzeug interactive debugger in any environment | 🔴 Critical |
-| 4 | `backend/app/controllers/analyzeController.py` | `analyze_statement()` | Files saved to `uploads/` and never deleted — sensitive financial data accumulates on disk indefinitely | 🔴 Critical |
-| 5 | `backend/app/models/analyzeModel.py` | `EnhancedNarrationAnalyzer.analyze()` | References `self.nlp` which is never set — raises `AttributeError` if ever called | 🔴 Critical |
+| CR-01 | `backend/requirements.txt` | whole file | **Still UTF-16 encoded.** The "fix" never landed. `hexdump` shows a null byte after every character (`46 00 6c 00 ...`). `pip install -r requirements.txt` fails on any clean environment. | 🔴 Critical |
+
+### CR-01 — `requirements.txt` is still UTF-16 (regression / un-landed fix)
+
+The 2026-05-29 sprint log lists this as "Fixed UTF-16 encoding → clean UTF-8". The file on disk is **still UTF-16-LE**:
+
+```
+00000000  46 00 6c 00 61 00 73 00  6b 00 3d 00 3d 00 33 00  |F.l.a.s.k.=.=.3.|
+```
+
+Every other byte is `0x00`. A fresh `pip install -r requirements.txt` will throw an encoding error or read garbage. This blocks every new contributor and every CI/Docker build before anything else runs.
+
+**Why it probably happened:** the file was re-saved from a PowerShell redirect (`>` in PowerShell writes UTF-16 by default) or an editor that preserved the original encoding. Sprint notes were written assuming the edit took.
+
+**Fix — force UTF-8, no BOM:**
+```bash
+# from repo root, in a normal shell (not PowerShell >)
+printf '%s\n' \
+  "Flask==3.1.2" "flask-cors==6.0.1" "python-dotenv==1.2.1" \
+  "pdfplumber==0.11.8" "pandas==2.3.3" "openpyxl==3.1.5" "requests==2.32.5" \
+  > backend/requirements.txt
+file backend/requirements.txt   # should say: ASCII text
+```
+**Add a guard so this can't silently regress:** a one-line CI check — `file backend/requirements.txt | grep -q ASCII` — or a pre-commit hook.
 
 ---
 
 ## Security Issues
 
-### S-01 — No file type or size validation
-**File:** `backend/app/controllers/analyzeController.py`
-
-```python
-# Current — only checks if filename is empty
-if uploaded_file.filename == "":
-    return jsonify({"success": False, "message": "Invalid file."}), 400
-```
-
-No check on: file extension whitelist, MIME type, or file size. An attacker can upload a 500 MB archive, a malicious script, or a crafted PDF designed to exploit pdfplumber.
-
-**Fix:**
-```python
-ALLOWED_EXTENSIONS = {'.pdf', '.csv', '.xlsx', '.xls'}
-MAX_SIZE = 20 * 1024 * 1024  # 20 MB
-
-ext = os.path.splitext(secure_filename(uploaded_file.filename))[1].lower()
-if ext not in ALLOWED_EXTENSIONS:
-    return jsonify({"success": False, "message": "File type not allowed."}), 400
-
-uploaded_file.seek(0, 2)
-if uploaded_file.tell() > MAX_SIZE:
-    return jsonify({"success": False, "message": "File exceeds 20 MB limit."}), 400
-uploaded_file.seek(0)
-```
-
----
-
-### S-02 — CORS wildcard default
-**File:** `backend/app/config/config.py`
-
-```python
-CORS_URLS = os.getenv("CORS_URLS", "*")
-```
-
-If `CORS_URLS` is not set, every origin (including `evil.com`) can call this API with credentials. For a local dev tool this is inconvenient but tolerable; for any networked deployment it is a real exposure.
-
-**Fix:** Default to `http://localhost:3000` or raise a startup warning if the variable is unset.
-
----
-
-### S-03 — No API authentication
+### CR-S-01 🟠 — No authentication on the analyze endpoint
 **File:** `backend/app/routes/routes.py`
 
-The single endpoint has no auth middleware. Any client that can reach port 5000 can submit files. The `Config` class has no `SECRET_KEY` defined.
+`POST /api/analyze/bank/statement` is fully public. Anyone who can reach the port can upload statements and consume CPU (pdfplumber parsing is expensive). Acceptable for a localhost tool; a real exposure the moment this is deployed anywhere networked.
 
-**Fix (minimal):** Add a static API key check via a decorator or middleware. For anything beyond a local tool, add proper auth.
+**Fix (minimal):** static API-key check via a `before_request` hook or decorator. Anything beyond a personal tool → real auth (session/JWT) and per-IP rate limiting (`flask-limiter`).
 
----
+### CR-S-02 🟠 — Dead `verify_bank_account_with_pennyless` still ships hardcoded identity data
+**File:** `backend/app/models/analyzeModel.py` (~lines 1097–1172)
 
-### S-04 — Hardcoded dummy credentials in `verify_bank_account_with_pennyless`
-**File:** `backend/app/models/analyzeModel.py`
-
+The function is never called, but it's still in the tree with:
 ```python
 name = "stco"
 mobile = "9999999999"
 ```
+Dead code that would POST a hardcoded name/mobile to an external API if ever wired up. With `INTEGRATION_URL` now defaulting to `""`, the request URL becomes malformed rather than raising — so it fails quietly instead of loudly.
 
-These placeholder values are hardcoded and would be sent to a real external verification API. Even if the integration is incomplete, this is a bad pattern — values like this end up in logs and API provider audit trails.
+**Fix:** delete the function until the integration is real. If you want to keep it, move it behind a feature flag and pull `name`/`mobile` from the request, never hardcode.
+
+### CR-S-03 🟡 — Extension whitelist trusts the filename, not the bytes
+**File:** `backend/app/controllers/analyzeController.py`
+
+Validation keys off the file *extension*. A file named `x.pdf` that is actually something else passes the gate. pdfplumber/pandas will fail safely on garbage, so the blast radius is small, but for defense in depth verify magic bytes (e.g. `%PDF`, `PK\x03\x04` for xlsx) before parsing.
+
+### CR-S-04 🟡 — No bound on PDF page count / parsing time
+A 20 MB PDF can still contain thousands of pages or a decompression bomb. The size cap helps; a page-count cap and a parse timeout (run parsing in a worker with a wall-clock limit) would close the DoS vector. This pairs naturally with the planned async/job-queue work.
 
 ---
 
 ## Correctness Issues
 
-### C-01 — `confidence_score` missing from PDF path
-**File:** `backend/app/models/analyzeModel.py`
-
-In `_process_excel_csv`, after building the transaction list:
-```python
-for txn in transactions:
-    txn["confidence_score"] = self.calculate_confidence_score(txn)
-```
-
-This loop is **absent** from `_process_pdf_transactions`. PDF transactions are returned without a `confidence_score` field. The frontend `types.ts` declares `confidence_score: number` as required on `Transaction`, which will cause rendering bugs.
-
-**Fix:** Add the same loop before the return statement in `_process_pdf_transactions`, or extract it into a shared helper.
-
----
-
-### C-02 — Double assignment typo
-**File:** `backend/app/models/analyzeModel.py`, `_process_excel_csv`
-
-```python
-parsed_date = parsed_date = self.normalize_date(transaction_date_str, index)
-```
-
-The variable is assigned twice in the same statement — a copy-paste artifact. Functionally harmless but signals carelessness.
-
-**Fix:** `parsed_date = self.normalize_date(transaction_date_str, index)`
-
----
-
-### C-03 — Silent swallowing of row-level errors
-**File:** `backend/app/models/analyzeModel.py`, `_process_excel_csv`
-
-```python
-except Exception as inner_err:
-    print("Skipping row %s due to parsing error", index)
-```
-
-The actual exception `inner_err` is never logged — only the row index. If there is a systematic bug (e.g., a column name mismatch), every row silently fails and the user gets an empty transaction list with no useful feedback.
-
-**Fix:**
-```python
-except Exception as inner_err:
-    logger.warning("Skipping row %s due to parsing error: %s", index, inner_err, exc_info=True)
-```
-
----
-
-### C-04 — `print()` used with `%s` format but no `%` operator
-**File:** `backend/app/models/analyzeModel.py` (throughout)
-
-```python
-print("Detected header row at index: %s", i)
-print("Excel/CSV Normalized Columns: %s", df.columns.tolist())
-```
-
-`print()` doesn't accept `%s` format strings — it just prints the format string and the argument as separate items separated by a space. These log lines produce garbled output like `"Detected header row at index: %s 3"` instead of `"Detected header row at index: 3"`.
-
-This works as-is (the output is just ugly), but it means all these "logs" are misleading. They'll work correctly once migrated to `logging.debug("...", i)`.
-
----
-
-### C-05 — `required_cols_pdf` logic is inverted
+### CR-C-01 🟠 — Multi-page PDF tables lose their continuation rows
 **File:** `backend/app/models/analyzeModel.py`, `_process_pdf_transactions`
 
+Each page's tables are extracted independently and `table[0]` is always treated as the header:
 ```python
-required_cols_pdf = [date_col, narration_col]
-if not all(required_cols_pdf) and not (credit_col or debit_col or amount_col):
-    continue
+df = pd.DataFrame(table[1:], columns=table[0])
 ```
+When a transaction table spills onto the next page **without repeating its header** (very common in real statements), page 2's first *data* row is consumed as column headers, then the table fails the `required_cols` check and is skipped — silently dropping a page of transactions. The user sees a lower total with no error.
 
-This says: "skip if both (date or narration missing) AND (no amount columns)". The `and` should likely be `or` — a table should be skipped if it's missing either its date/narration columns OR its amount columns, not only when both conditions are simultaneously true.
+**Fix options:** (a) carry the last good header forward when a table's first row looks like data, or (b) switch to coordinate/word-based extraction and stitch rows across pages, or (c) detect "headerless continuation" by column-count match against the previous table.
 
-Compare with the Excel path which uses a stricter check:
-```python
-if not all(required_cols) or not (credit_col or debit_col or amount_col):
-```
+### CR-C-02 🟡 — `transaction_reference` regex can capture account/phone numbers
+**File:** `analyze_narration_details`, fallback ref patterns (~line 908)
 
-The PDF path uses `and` — the Excel path uses `or`. One of these is wrong. The `or` (Excel) is more defensive.
+The final fallback `r"\b(?:\d{10,})\b"` grabs *any* 10+ digit run. In an IMPS/NEFT narration that also contains a beneficiary account number or a 10-digit mobile, the wrong number can land in `transaction_reference`. Low-severity data-quality noise, but it feeds confidence scoring and merchant insights.
 
-**Fix:** Change `and` to `or` in the PDF path to match the Excel path.
+**Fix:** require a labeled prefix (RRN/UTR/REF/TXN) for the numeric fallback, or rank candidates and prefer 12/16-digit UTR-shaped strings.
+
+### CR-C-03 🟡 — `account_holder` regex is greedy and order-dependent
+**File:** `_extract_metadata_from_text` (~line 755)
+
+`([A-Z][A-Z\s\.&,']+)` is broad — on statements where the header block is mostly uppercase (bank name, address, column titles), it can capture the wrong span as the account holder. There's no validation that the captured string looks like a name (length bounds, word count, not a known bank/keyword).
+
+**Fix:** add sanity filters (2–4 words, not in the bank-keyword list, < 40 chars) or fall back to `None` rather than a confident-but-wrong value. This is exactly the kind of brittle extraction the planned NER/LLM work should replace.
+
+### CR-C-04 🟡 — Confidence score penalizes balance-less statements systematically
+**File:** `calculate_confidence_score`
+
+`-0.05` for missing `balance` is fine in isolation, but many valid statement formats (especially credit-card and some CSV exports) simply don't carry a running balance. Every transaction from those files takes a flat hit, dragging `overall_score` down and tripping the `high_confidence_txns` threshold for reasons unrelated to extraction quality.
+
+**Fix:** make the balance penalty conditional on whether *any* transaction in the file had a balance (i.e., the format is expected to have one), not per-transaction unconditionally.
+
+### CR-C-05 🟡 — No transaction de-duplication
+If the same table is extracted twice (overlapping pdfplumber table regions, or a repeated summary block), duplicate transactions enter the list and skew `merchant_insights` and totals. There's no dedupe on `(date, amount, narration, balance)`.
+
+**Fix:** dedupe on a composite key before scoring.
 
 ---
 
 ## Maintainability Issues
 
-### M-01 — Four dead classes in `analyzeModel.py`
-**File:** `backend/app/models/analyzeModel.py`
-
-`EnhancedNarrationAnalyzer`, `TransactionPatternLearner`, `BalanceValidator`, and `EnhancedConfidenceScorer` are defined but never instantiated or called anywhere. They represent 200+ lines of aspirational code that inflates the file and misleads anyone reading it.
-
-`EnhancedNarrationAnalyzer` contains a critical bug (`self.nlp` undefined). `TransactionPatternLearner.learn_patterns` calls `txn["transaction_date"].day` which would raise `AttributeError` since dates are stored as strings.
-
-**Fix:** Remove all four. If the features are planned, open issues/tickets for them instead.
-
----
-
-### M-02 — `sklearn` imported but not used
-**File:** `backend/app/models/analyzeModel.py`
-
-```python
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.preprocessing import MultiLabelBinarizer
-from sklearn.ensemble import RandomForestClassifier
-```
-
-None of these are used in any active code path. `scikit-learn` and `scipy` together add ~120 MB to the install. Remove until the ML categorization feature is actually implemented.
-
----
-
-### M-03 — Dead variables
-**File:** `backend/app/models/analyzeModel.py`, `_process_excel_csv`
-
-```python
-verification_tasks = []
-txn_peer_map = []
-```
-
-Both initialized, nothing ever appended. Remove.
-
----
-
-### M-04 — API base URL hardcoded in frontend
-**File:** `frontend/services/api.ts`
-
-```typescript
-const API_URL = 'http://localhost:5000/api/analyze/bank/statement';
-```
-
-Cannot be overridden without editing source. Use `import.meta.env.VITE_API_URL`.
-
----
-
-### M-05 — No health check endpoint
+### CR-M-01 🟡 — No health endpoint
 **File:** `backend/app/routes/routes.py`
 
-There is no `GET /health` or `GET /api/health` endpoint. Impossible to use a load balancer, container orchestrator, or uptime monitor without one.
+Still no `GET /api/health`. Required for any container/orchestrator/uptime check and it's a 3-line add. (The FastAPI ADR lists it as an action item — worth doing in the current Flask app too so monitoring isn't blocked on the migration.)
 
-**Fix (2 lines):**
-```python
-@analyze_statement_bp.route('/health', methods=['GET'])
-def health():
-    return jsonify({"status": "ok"}), 200
-```
+### CR-M-02 🟡 — Column-detection block is duplicated across Excel and PDF paths
+The identical `find_column([...])` sequence for date/credit/debit/amount/narration/balance/account appears in both `_process_excel_csv` and `_process_pdf_transactions`, as does the credit/debit/amount → `(amount, txn_type)` resolution. Two copies that must change together.
+
+**Fix:** extract `_detect_columns(df) -> ColumnMap` and `_resolve_amount(row, cols) -> (amount, type)`. Cuts ~80 lines and removes a drift risk.
+
+### CR-M-03 🟡 — `BankStatementAnalyzer` is still a single ~1,280-line class
+Routing, Excel parsing, PDF parsing, date normalization, narration enrichment, metadata extraction, and scoring all live in one class. It works, but it's hard to unit-test in isolation. The FastAPI migration is the natural moment to split into `parsers/`, `enrichers/`, `scorers/` (see tech-debt TD-007).
+
+### CR-M-04 🟡 — Zero automated tests
+No pytest, no Vitest. Every one of the correctness items above is the kind of thing a 20-line unit test would catch and lock down. This is the highest-leverage maintainability investment — and a prerequisite for safely doing the FastAPI port and the ML work.
+
+### CR-M-05 🟢 — `.gitIgnore` is still capitalized
+The file is `.gitIgnore` (capital I). On case-sensitive filesystems (Linux CI, most Docker builds) git does not recognize it, so `__pycache__`/`.pyc` and `venv/` may get tracked. Rename to `.gitignore` and confirm it ignores `**/__pycache__/`, `*.pyc`, `venv/`, `.env`.
+
+---
+
+## Frontend notes
+
+- **`TransactionTable` renders every row** (`safeTransactions.map(...)`) with no pagination or virtualization. Fine for a 60-row statement; janky at 1,000+. Add simple pagination or `@tanstack/react-virtual` before the multi-statement/history features land. (tech-debt TD-018, still open.)
+- **Row key** `` `${txn.transaction_reference}-${index}` `` is fine, but `transaction_reference` is frequently `null` — keys collapse to `null-0`, `null-1`. Harmless because `index` disambiguates, but worth a cleaner stable key once dedupe exists.
+- **`types.ts` is well-maintained** and matches the backend response shape. When you move to FastAPI + Pydantic, generate these types from the OpenAPI schema (`openapi-typescript`) so they can't drift.
+- **`api.ts` error handling is genuinely good** — distinguishes network vs HTTP vs non-JSON error bodies. Nice.
 
 ---
 
 ## What Looks Good ✅
 
-- **`secure_filename()`** is used when saving uploaded files — prevents path traversal attacks
-- **`ErrorBoundary` per dashboard section** — a React crash in one chart doesn't kill the whole page
-- **TypeScript types** in `types.ts` are comprehensive and match the API response shape well
-- **`narration_details` regex patterns** cover the major Indian payment formats (UPI structured, IMPS, NEFT, RTGS, BBPS) — clearly built from real-world data
-- **`calculate_confidence_score`** uses penalty-based scoring — a good, transparent approach over a black-box model for a v1
-- **`detect_header_row`** gracefully handles bank statements that have header rows partway down the file — a common real-world challenge
-- **Separate `ErrorBoundary` component** is a solid production pattern
-- **`vite.config.ts`** correctly exposes `GEMINI_API_KEY` to the frontend via `define` (prepared for future AI features)
-- **MVC structure** is clear and consistent — controller doesn't do business logic, model doesn't touch HTTP
+- The Sprint-01 cleanup was real and well-scoped — the controller and config are now clean and production-shaped.
+- `analyze_narration_details` covers the major Indian rails (UPI structured, VSI card, IMPS, NEFT/RTGS, BBPS) and clearly comes from real data.
+- Penalty-based `calculate_confidence_score` is transparent and debuggable — the right call for v1 over a black-box model.
+- `detect_header_row` handling of headers partway down a file is a real-world-aware touch.
+- Per-section `ErrorBoundary` on the dashboard is a solid production pattern.
+- Logging migration (`print` → `logger`) means the app is now actually observable.
 
 ---
 
 ## Suggested Fix Order
 
-1. Fix `requirements.txt` encoding (TD-001) — nothing else works until this is done
-2. Delete uploaded files after processing (TD-005)
-3. Add `INTEGRATION_URL/AUTH` to Config, add `.env.example` (TD-002, TD-003)
-4. Remove `debug=True` from run.py (TD-004)
-5. Add file validation (size + extension whitelist) (S-01)
-6. Fix `confidence_score` missing from PDF path (C-01)
-7. Fix `required_cols_pdf` `and`→`or` (C-05)
-8. Remove four dead classes (M-01) and sklearn imports (M-02)
-9. Replace `print()` with `logging` (TD-012)
-10. Add env var for API URL on frontend (M-04)
+1. **CR-01** — re-encode `requirements.txt` to UTF-8 + add a CI guard. Nothing else (Docker, CI, onboarding) works until this is real.
+2. **CR-M-05** — rename `.gitIgnore` → `.gitignore` (one command, prevents secret/`.env` leakage).
+3. **CR-C-01** — multi-page PDF continuation rows (data-loss bug; matters for the PDF-compatibility goal).
+4. **CR-M-01** — add `GET /api/health`.
+5. **CR-S-02** — delete the dead Pennyless function with its hardcoded identity data.
+6. **CR-M-04** — stand up pytest with unit tests for `parse_amount`, `normalize_date`, `find_column`, `analyze_narration_details` *before* the FastAPI port.
+7. **CR-C-02..05** — narration/metadata/dedupe quality fixes (bundle into one "extraction hardening" patch).
+8. **CR-M-02/03** — refactor shared column detection + split the module (do it as part of the FastAPI migration).
 
 ---
 
-*Full prioritized backlog is in `tech-debt.md`. Architectural recommendations in `system-design.md`.*
+*Prioritized backlog with IDs in `tech-debt.md`. Forward-looking feature analysis in `improvement-analysis.md`. Framework decision in `adr-001-flask-vs-fastapi.md`.*

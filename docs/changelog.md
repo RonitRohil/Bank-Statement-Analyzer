@@ -5,6 +5,22 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-05-30 — Session 02: Re-review + Forward Planning
+
+### Documentation — Current-state re-review
+**Type:** Documentation / review
+**Decision:** Regenerated `code-review.md` and `tech-debt.md` against the post-Sprint-01 code; added `improvement-analysis.md` reviewing the planned PDF / FastAPI / AI-ML tracks.
+**Reason:** The 2026-05-29 docs described the pre-fix codebase. Verified which fixes actually landed.
+**Impact:**
+- Confirmed 13 tech-debt items genuinely resolved (TD-002–006, 009–015, 017).
+- **Reopened TD-001:** `requirements.txt` is still UTF-16 on disk — the fix was logged but never landed. `pip install` still fails on a clean env. Now the #1 open item; recommend a CI guard against regression.
+- Logged 7 new debt items (TD-021–027): multi-page PDF row loss, dead Pennyless fn with hardcoded identity data, byte-level upload validation, transaction dedupe, over-greedy txn_reference regex, balance-less confidence penalty, missing /api/health.
+- Raised TD-016 (no tests) priority — prerequisite for the FastAPI port and ML work.
+**Strategic finding:** three unplanned prerequisites block the AI/ML roadmap as written — persistence (history store), PII redaction before LLM calls, and an evaluation harness. Recommended building this substrate before the planned features.
+**Files affected:** `docs/code-review.md`, `docs/tech-debt.md`, `docs/improvement-analysis.md` (new), `docs/changelog.md`
+
+---
+
 ## 2026-05-29 — Session 01: Full Audit + Critical Fixes
 
 ### Architecture Decision
