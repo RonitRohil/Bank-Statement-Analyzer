@@ -5,6 +5,14 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-05-31 — TD-001 Fix: requirements.txt re-encoded as UTF-8
+**Type:** Bug fix (reopened)
+**Root cause:** Fix was logged on 2026-05-29 but the file on disk was never rewritten; PowerShell or the editor re-saved as UTF-16-LE.
+**Fix:** Rewrote via Python open(..., encoding='utf-8') to guarantee encoding.
+**Files affected:** backend/requirements.txt, docs/changelog.md
+
+---
+
 ## 2026-05-30 — Session 02: Re-review + Forward Planning
 
 ### Documentation — Current-state re-review
