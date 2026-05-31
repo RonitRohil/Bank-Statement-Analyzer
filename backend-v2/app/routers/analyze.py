@@ -4,10 +4,10 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
 
 from app.config.settings import settings
 from app.models.analyzer import BankStatementAnalyzer
+from app.models.schemas import AnalyzeResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ ALLOWED_EXTENSIONS = {".pdf", ".csv", ".xlsx", ".xls"}
 MAX_BYTES = settings.max_upload_size_mb * 1024 * 1024
 
 
-@router.post("/api/analyze/bank/statement")
+@router.post("/api/analyze/bank/statement", response_model=AnalyzeResponse)
 async def analyze_statement(file: UploadFile = File(...)):
     suffix = Path(file.filename).suffix.lower()
     if suffix not in ALLOWED_EXTENSIONS:
@@ -43,7 +43,12 @@ async def analyze_statement(file: UploadFile = File(...)):
         result = await asyncio.to_thread(
             lambda: BankStatementAnalyzer(str(file_path)).extract_transactions()
         )
-        return JSONResponse(content=result, status_code=200)
+        http_status = result.get("status_code", 200)
+        if http_status != 200:
+            raise HTTPException(status_code=http_status, detail=result.get("message", "Analysis failed"))
+        return result
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Analysis failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
