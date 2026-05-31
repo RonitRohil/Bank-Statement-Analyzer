@@ -4,11 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Bank Statement Analyzer** is a full-stack application for parsing and analyzing bank statements (PDF, Excel, CSV). Users upload files through a React frontend; the Flask backend extracts and enriches transactions with metadata (payment method, merchant, category, confidence scores), and returns structured JSON for visualization in an interactive dashboard.
+**Bank Statement Analyzer** is a full-stack application for parsing and analyzing bank statements (PDF, Excel, CSV). Users upload files through a React frontend; the backend extracts and enriches transactions with metadata (payment method, merchant, category, confidence scores), and returns structured JSON for visualization in an interactive dashboard.
 
-- **Backend**: Flask 3.1.2 with Python 3.x, PDF/Excel/CSV parsing
+- **Backend (v1 — active)**: Flask 3.1.2 on port 5000 — original synchronous backend
+- **Backend (v2 — migration in progress)**: FastAPI 0.115 on port 8000 — async, Pydantic v2, Swagger UI; `POST /api/analyze/bank/statement` and `GET /api/health` already ported
 - **Frontend**: React 19 + TypeScript + Vite, data visualization with Recharts
 - **Key Features**: Multi-format document parsing, narration analysis (UPI, IMPS, NEFT, card payments), merchant insights, confidence scoring, account metadata extraction
+
+**Migration status:** Flask (port 5000) stays running until parity is confirmed; FastAPI (port 8000) is the target. Next step: BSA-09 (frontend cutover + Flask decommission).
 
 ## Development Setup
 
@@ -35,6 +38,24 @@ pip install -r requirements.txt
 python run.py
 # or
 flask run
+```
+
+### Backend (FastAPI — backend-v2)
+
+```bash
+cd backend-v2
+
+# Create virtual environment (Windows)
+python -m venv venv
+venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run dev server (port 8000)
+uvicorn app.main:app --reload --port 8000
+
+# Swagger UI: http://localhost:8000/docs
 ```
 
 ### Frontend (React + TypeScript)
@@ -84,7 +105,7 @@ Frontend dashboard
     └─ TransactionTable: searchable transaction list with payment methods
 ```
 
-### Backend Structure (Flask MVC)
+### Backend Structure (Flask MVC — backend/)
 
 | Layer | Location | Purpose |
 |-------|----------|---------|
@@ -92,9 +113,21 @@ Frontend dashboard
 | App Init | app/__init__.py | Bootstraps Flask app, registers CORS, loads blueprints |
 | Route | app/routes/routes.py | Single endpoint: POST /api/analyze/bank/statement |
 | Controller | app/controllers/analyzeController.py | Handles file upload, saves to uploads/, delegates to model |
-| Model | app/models/analyzeModel.py | Core business logic (~1400 lines) |
+| Model | app/models/analyzeModel.py | Core business logic |
 | Config | app/config/config.py | Loads CORS_URLS from .env |
 | Constants | app/constants/constants.py | HTTP status code map |
+
+### Backend Structure (FastAPI — backend-v2/)
+
+| Layer | Location | Purpose |
+|-------|----------|---------|
+| Entry Point | run.py | Starts uvicorn on port 8000 |
+| App Init | app/main.py | FastAPI app, CORS middleware, router registration |
+| Router | app/routers/health.py | GET /api/health |
+| Router | app/routers/analyze.py | POST /api/analyze/bank/statement (async, to_thread) |
+| Model | app/models/analyzer.py | BankStatementAnalyzer + TransactionPatternTrainer (copied from Flask, Flask imports stripped) |
+| Schemas | app/models/schemas.py | Pydantic v2 models: Transaction, AccountInfo, AnalysisResult, AnalyzeResponse |
+| Config | app/config/settings.py | pydantic-settings: cors_origins, max_upload_size_mb, debug |
 
 ### Core Classes in analyzeModel.py
 
@@ -110,15 +143,12 @@ Frontend dashboard
   - analyze_narration_details(): Regex-based extraction of UPI IDs, payment methods, RRN/UTR/TXN refs, banks, merchants, categories
   - calculate_confidence_score(): Scores each transaction (max 1.0) on date, amount, narration, type, receiver, balance
   - _extract_metadata_from_text(): Regex patterns for account number, account holder, bank name, branch, IFSC, statement period
-  - verify_bank_account_with_pennyless(): (Broken) Calls external API; requires undefined Config.INTEGRATION_URL and Config.INTEGRATION_AUTH
 
 - **TransactionPatternTrainer**: Aggregates by merchant; computes count, avg/median amounts, std dev, first/last seen dates, common transaction days
 
-**Dead Code (incomplete, never instantiated):**
-- EnhancedNarrationAnalyzer: References undefined self.nlp
-- TransactionPatternLearner: Pattern learning skeleton
-- BalanceValidator: Running balance validation
-- EnhancedConfidenceScorer: Multi-signal confidence scoring
+**Removed dead code (all deleted — Sprint 01):**
+- EnhancedNarrationAnalyzer, TransactionPatternLearner, BalanceValidator, EnhancedConfidenceScorer — incomplete stubs, never called
+- verify_bank_account_with_pennyless() — hardcoded identity data, API creds undefined, never called
 
 ### Frontend Structure (React + TypeScript)
 
@@ -249,23 +279,24 @@ For each unique merchant (or receiver if merchant not found):
 
 ## Known Issues & Limitations
 
-1. **Broken Pennyless Integration**: verify_bank_account_with_pennyless() references undefined Config.INTEGRATION_URL and Config.INTEGRATION_AUTH. Raises AttributeError if called.
+**Fixed (Sprint 01):**
+- ~~Broken Pennyless Integration~~ — deleted (TD-022)
+- ~~File cleanup~~ — `finally` block deletes uploaded file after every request (both backends)
+- ~~Hardcoded API URL~~ — frontend reads `VITE_API_URL` env var (session 01)
+- ~~Dead code classes~~ — removed (Sprint 01)
+- ~~Unused scikit-learn dependency~~ — removed from requirements.txt
 
-2. **File Cleanup**: Uploaded files saved to uploads/ but never deleted; directory grows unbounded.
+**Open:**
 
-3. **Single Synchronous Endpoint**: Large PDFs block Flask worker thread; no async processing.
+1. **Single Synchronous Flask Endpoint**: Large PDFs still block the Flask v1 worker thread. FastAPI v2 solves this via `asyncio.to_thread()` — migrate frontend to port 8000 (BSA-09) to close this.
 
-4. **Hardcoded API URL**: Frontend hardcodes http://localhost:5000 in services/api.ts; no environment configuration.
+2. **No Authentication**: Both backends have fully public endpoints. No auth layer planned until user accounts are in scope.
 
-5. **No Authentication**: /api/analyze/bank/statement is fully public.
+3. **PDF Limitations**: Scanned (image-based) PDFs fail silently; only works with digital/table-based PDFs. Needs OCR (Tesseract or Azure) to fix.
 
-6. **Dead Code**: Four incomplete classes inflate analyzeModel.py and suggest unfinished features.
+4. **No Balance Validation**: Running balance not validated against credit/debit deltas; inconsistent data passes through undetected.
 
-7. **Unused Dependencies**: scikit-learn in requirements.txt but not used.
-
-8. **PDF Limitations**: Scanned (image-based) PDFs fail silently; only works with digital/table-based PDFs.
-
-9. **No Balance Validation**: BalanceValidator exists but never called; inconsistent balances not detected.
+5. **uploads/ path is process-relative**: FastAPI creates `uploads/` relative to the CWD at launch time. Always launch from `backend-v2/`.
 
 ## Common Development Tasks
 
@@ -326,7 +357,9 @@ VITE_API_URL=http://localhost:5000
 
 ## Technology Stack
 
-**Backend:** Flask 3.1.2, pdfplumber, pandas 2.3.3, openpyxl 3.1.5, requests 2.32.5, python-dotenv 1.2.1
+**Backend v1 (Flask):** Flask 3.1.2, pdfplumber, pandas 2.3.3, openpyxl 3.1.5, requests 2.32.5, python-dotenv 1.2.1
+
+**Backend v2 (FastAPI):** FastAPI 0.115.12, uvicorn, pydantic 2.11.4, pydantic-settings 2.9.1, python-multipart 0.0.20, pdfplumber, pandas 2.3.3, openpyxl 3.1.5, requests 2.32.5, python-dotenv 1.2.1
 
 **Frontend:** React 19.2.0, TypeScript 5.8.2, Vite 6.2.0, Recharts 3.5.1, Lucide React 0.555.0, Tailwind CSS (CDN)
 
