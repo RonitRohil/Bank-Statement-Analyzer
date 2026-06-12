@@ -156,7 +156,7 @@ Frontend dashboard
 |------|---------|
 | App.tsx | Root component; manages analysis state, orchestrates layout |
 | types.ts | TypeScript interfaces: AccountInfo, Transaction, AnalysisResult, ApiResponse |
-| services/api.ts | uploadBankStatement(file) function; posts to hardcoded http://localhost:5000 |
+| services/api.ts | uploadBankStatement(file) function; base URL from `VITE_API_URL` env var (falls back to http://localhost:5000) |
 | components/FileUpload.tsx | Drag-drop + click file input; loading state; error alerts |
 | components/AccountOverview.tsx | Bank details, account holder, confidence %, statement period |
 | components/AnalyticsCharts.tsx | Recharts: balance history (line), income vs. expense (bar), top merchants (pie) |
@@ -279,12 +279,15 @@ For each unique merchant (or receiver if merchant not found):
 
 ## Known Issues & Limitations
 
-**Fixed (Sprint 01):**
-- ~~Broken Pennyless Integration~~ — deleted (TD-022)
+**Fixed:**
+- ~~Broken Pennyless Integration~~ — deleted (TD-022, 2026-05-31)
 - ~~File cleanup~~ — `finally` block deletes uploaded file after every request (both backends)
-- ~~Hardcoded API URL~~ — frontend reads `VITE_API_URL` env var (session 01)
+- ~~Hardcoded API URL~~ — frontend reads `VITE_API_URL` env var
 - ~~Dead code classes~~ — removed (Sprint 01)
 - ~~Unused scikit-learn dependency~~ — removed from requirements.txt
+- ~~requirements.txt UTF-16 encoding~~ — re-encoded as UTF-8 (TD-001, 2026-05-31)
+- ~~`.gitIgnore` not recognized~~ — renamed to `.gitignore`, missing patterns added (TD-020, 2026-05-31)
+- ~~No `/api/health` endpoint~~ — added to Flask blueprint and FastAPI router (TD-027, 2026-05-31)
 
 **Open:**
 
@@ -326,15 +329,36 @@ For each unique merchant (or receiver if merchant not found):
 - Use print statements in analyzeModel.py (visible in Flask console)
 - For PDF: verify pdfplumber extraction with pdfplumber.open(file_path).pages[0].extract_tables()
 
-## Testing Locally
+## Testing
 
-**cURL:**
+### Unit / Integration Tests (pytest — Flask backend)
+
+```bash
+cd backend
+# activate venv first
+pytest                          # run all tests (23 pass, 1 xfail)
+pytest tests/test_parse_amount.py          # single test file
+pytest tests/test_narration.py -v          # verbose output
+pytest -k "test_upi"                       # run tests matching a pattern
+```
+
+Test files in `backend/tests/`: `test_parse_amount.py`, `test_normalize_date.py`, `test_narration.py`, `test_health.py`. Fixture for the Flask test client lives in `backend/conftest.py`.
+
+**Known xfail:** UPI structured match returns early before merchant detection — `UPI/.../AMAZON PAY/...` yields `merchant=None`. Marked `@pytest.mark.xfail` in `test_narration.py` pending a fix.
+
+There are currently no tests for the FastAPI backend or the React frontend.
+
+### Manual / cURL
+
 ```bash
 curl -X POST http://localhost:5000/api/analyze/bank/statement \
   -F "file=@/path/to/statement.xlsx"
+
+curl http://localhost:5000/api/health   # {"status": "ok", "service": "bank-statement-analyzer"}
 ```
 
-**Frontend:**
+### Browser
+
 1. Start backend and frontend dev servers
 2. Open http://localhost:3000
 3. Upload test files
