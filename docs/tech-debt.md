@@ -1,160 +1,254 @@
 # Technical Debt Report — Bank Statement Analyzer
 
-**Original:** 2026-05-29 · **Updated:** 2026-05-30
-**Reviewed by:** Claude (Cowork)
-**Project:** Bank Statement Analyzer (Flask + React/TypeScript)
+**Original:** 2026-05-29 · **Updated:** 2026-06-13  
+**Reviewed by:** Claude (Cowork)  
+**Project:** Bank Statement Analyzer (Flask + FastAPI/React/TypeScript)
 
-Severity scale: 🔴 Critical · 🟠 High · 🟡 Medium · 🟢 Low
+Severity scale: 🔴 Critical · 🟠 High · 🟡 Medium · 🟢 Low  
 Status: ✅ Resolved · ⚠️ Reopened · ⬜ Open
 
-> Updated after the Sprint-01 fixes. IDs are preserved so cross-references (sprint plan, ADR) stay valid. **TD-001 is reopened** — it was marked done but the fix never landed on disk.
+---
+
+## Status Snapshot (post-Sprint-01)
+
+| Resolved ✅ | Open ⬜ | Reopened ⚠️ |
+|------------|---------|-------------|
+| TD-002–006, 009–015, 017, 020, 022, 027 | TD-007, 008, 018, 019, 021, 023–026, 028–032 | TD-001, TD-016 |
+
+**15 resolved, 14 open (5 carried + 5 FastAPI-new), 2 tracked special**
+
+> TD-001 was re-encoded this sprint (again). TD-016 was partially resolved — pytest exists for Flask only; FastAPI tests logged as TD-031.
 
 ---
 
-## Status snapshot
+## Priority 1 — Fix Before Next Sprint
 
-| Resolved ✅ | Still open ⬜ | Reopened ⚠️ |
-|------------|--------------|-------------|
-| TD-002, TD-003, TD-004, TD-005, TD-006, TD-009, TD-010, TD-011, TD-012, TD-013, TD-014, TD-015, TD-017 | TD-007, TD-008, TD-016, TD-018, TD-019, TD-020, TD-021 → TD-027 | **TD-001** |
-
-13 resolved, 1 reopened, 13 open (6 carried + 7 new).
-
----
-
-## Priority 1 — Fix Before Any Production Use
-
-### TD-001 ⚠️ 🔴 `requirements.txt` is STILL UTF-16 encoded — REOPENED
-**File:** `backend/requirements.txt`
-**Status:** Marked resolved on 2026-05-29; **the fix never landed.** The file on disk is still UTF-16-LE — `hexdump` shows `46 00 6c 00 61 00 73 00` (null byte after every char). `pip install -r requirements.txt` fails on any clean environment, blocking onboarding, CI, and Docker.
-**Likely cause:** re-saved via PowerShell `>` (writes UTF-16 by default) or an editor that kept the original encoding.
-**Fix:** rewrite as UTF-8 without BOM from a normal shell:
-```bash
-printf '%s\n' "Flask==3.1.2" "flask-cors==6.0.1" "python-dotenv==1.2.1" \
-  "pdfplumber==0.11.8" "pandas==2.3.3" "openpyxl==3.1.5" "requests==2.32.5" \
-  > backend/requirements.txt
-file backend/requirements.txt   # must print: ASCII text
+### TD-028 ✅ 🔴 `reload=True` hardcoded in `backend-v2/run.py` — **FIXED 2026-06-13**
+**File:** `backend-v2/run.py` line 3  
+**Score:** Impact 5 · Risk 5 · Effort 1 → **Priority 50**  
+**Description:** `uvicorn.run(..., reload=True)` is hardcoded — the same class of mistake as `debug=True` in the original Flask `run.py`. In production, `reload=True` starts a file-watching subprocess, causes double-startup on some platforms, and exposes server internals.  
+**Fix:**
+```python
+import os
+reload = os.getenv("UVICORN_RELOAD", "false").lower() == "true"
+uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=reload)
 ```
-**Add a regression guard:** CI step `file backend/requirements.txt | grep -q 'ASCII\|UTF-8'` or a pre-commit hook. This is the single most important open item.
+**Effort:** 2 minutes. Fix this in the same commit as TD-029.
 
 ---
 
-## Resolved in Sprint 01 ✅ (kept for the record)
-
-| ID | Sev | What it was | Verified fix |
-|----|-----|-------------|--------------|
-| TD-002 | 🔴 | `Config.INTEGRATION_URL/AUTH` undefined | Defined in `Config` with env defaults |
-| TD-003 | 🔴 | No `.env.example` | `backend/.env.example` present |
-| TD-004 | 🔴 | `debug=True` hardcoded | `run.py` reads `FLASK_DEBUG`, defaults false |
-| TD-005 | 🔴 | Uploaded files never deleted | `finally` block removes file in controller |
-| TD-006 | 🟠 | 4 dead classes in model | Removed; tracking comment left |
-| TD-009 | 🟠 | `sklearn` imported, unused | Imports removed |
-| TD-010 | 🟠 | Frontend API URL hardcoded | `api.ts` uses `VITE_API_URL` |
-| TD-011 | 🟠 | No file size/MIME validation | Ext whitelist + `MAX_UPLOAD_SIZE` in controller |
-| TD-012 | 🟡 | `print()` instead of logging | `logger.*` throughout |
-| TD-013 | 🟡 | Double-assignment typo | Single assignment |
-| TD-014 | 🟡 | Dead vars `txn_peer_map`, `verification_tasks` | Removed |
-| TD-015 | 🟡 | `confidence_score` missing on PDF path | Scoring loop added |
-| TD-017 | 🟡 | CORS default `*` | Defaults to `http://localhost:3000` |
-
-> Note on TD-011: validation is by **file extension only** — bytes aren't checked. Hardening tracked as TD-023.
+### TD-029 ✅ 🔴 Dead `import requests` in `backend-v2/analyzer.py` + dead dep in requirements — **FIXED 2026-06-13**
+**Files:** `backend-v2/app/models/analyzer.py` line 7, `backend-v2/requirements.txt`  
+**Score:** Impact 3 · Risk 4 · Effort 1 → **Priority 35**  
+**Description:** `requests` was the only dependency of `verify_bank_account_with_pennyless()`, which was deleted from Flask. The import was never removed from the FastAPI copy. `requests==2.32.5` also stays in `backend-v2/requirements.txt` unnecessarily. Dead imports are noise and unused deps are attack surface.  
+**Fix:** Remove `import requests` from `analyzer.py` line 7. Remove `requests==2.32.5` from `backend-v2/requirements.txt`.  
+**Effort:** 2 minutes. Pair with TD-028.
 
 ---
 
-## Priority 2 — Fix Soon (carried open)
+### TD-031 ⬜ 🟠 Zero integration tests for FastAPI routes
+**Files:** `backend-v2/` (no `tests/` directory)  
+**Score:** Impact 5 · Risk 5 · Effort 3 → **Priority 30**  
+**Description:** The pytest suite in `backend/tests/` covers Flask only. FastAPI's `/api/health` and `/api/analyze/bank/statement` have no tests. This means: (1) BSA-09 (Flask cutover) has no parity baseline — we can't prove the two backends return the same shape; (2) any regression in the FastAPI route (response model mismatch, CORS breakage, auth middleware in future) goes undetected.  
+**What's needed:**
+- `backend-v2/tests/test_health.py` — GET `/api/health` returns 200 + correct JSON
+- `backend-v2/tests/test_analyze.py` — POST with fixture CSV + PDF; assert response shape matches `AnalyzeResponse`; assert 400 on bad extension; assert 413 on oversized file
+- `backend-v2/tests/test_parity.py` — send same file to both Flask (port 5000) and FastAPI (port 8000), diff JSON shape (not values)
+- Tool: `httpx.AsyncClient` with `pytest-asyncio`  
+**Effort:** 3–4 hours.
+
+---
+
+## Priority 2 — Fix Soon
+
+### TD-030 ✅ 🟠 CORS wildcards with `allow_credentials=True` — **FIXED 2026-06-13**
+**File:** `backend-v2/app/main.py`  
+**Score:** Impact 3 · Risk 4 · Effort 1 → **Priority 35**  
+**Description:** `allow_credentials=True` + `allow_methods=["*"]` + `allow_headers=["*"]` violates the CORS spec. When credentials (cookies, auth headers) are involved, browsers reject wildcard `*` for methods and headers. Currently the frontend uses `fetch` without credentials, so this doesn't cause immediate bugs — but it will when auth is added (Sprint-02+).  
+**Fix:**
+```python
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
+)
+```
+**Effort:** 5 minutes.
+
+---
+
+### TD-032 ✅ 🟡 `UPLOAD_DIR = Path("uploads")` is process-cwd-relative — **FIXED 2026-06-13**
+**File:** `backend-v2/app/routers/analyze.py`  
+**Score:** Impact 3 · Risk 3 · Effort 1 → **Priority 30**  
+**Description:** `Path("uploads")` resolves relative to wherever `uvicorn` is started, not relative to the `backend-v2/` source tree. Launch from the project root and uploads land in `./uploads/` instead of `backend-v2/uploads/`. This is a silent runtime bug — no error, files just go to the wrong place (or the right place sometimes, depending on how you start the server).  
+**Fix:**
+```python
+UPLOAD_DIR = Path(__file__).parent.parent.parent / "uploads"
+UPLOAD_DIR.mkdir(exist_ok=True)
+```
+**Effort:** 2 minutes.
+
+---
 
 ### TD-007 ⬜ 🟠 `BankStatementAnalyzer` is one ~1,280-line class
-File-type routing, Excel/PDF parsing, date normalization, narration enrichment, metadata extraction and scoring all in one class. Hard to unit-test in isolation. Split into `parsers/`, `enrichers/`, `scorers/`, `analyzers/`. Best done as part of the FastAPI port.
-
-### TD-008 ⬜ 🟠 Column-detection logic duplicated across Excel and PDF paths
-Identical `find_column([...])` sequences and the credit/debit/amount → `(amount, type)` resolution appear in both processors. Extract `_detect_columns(df) -> ColumnMap` and `_resolve_amount(row, cols)`. Removes ~80 lines and a drift risk.
-
-### TD-016 ⬜ 🟠 No automated tests (raised priority)
-Zero pytest/Vitest. This is now the **highest-leverage** open item after TD-001 — it's a prerequisite for safely doing the FastAPI migration and the ML work, and it would have caught TD-001 regressing.
-Starting points: unit-test `parse_amount`, `normalize_date`, `find_column`, `analyze_narration_details` with edge cases; one integration test hitting `/api/analyze/bank/statement` with a fixture CSV and a fixture PDF; snapshot/build test on the frontend.
+**Files:** `backend/app/models/analyzeModel.py`, `backend-v2/app/models/analyzer.py`  
+**Score:** Impact 4 · Risk 4 · Effort 5 → **Priority 8**  
+**Description:** File-type routing, Excel/CSV parsing, PDF parsing, date normalization, narration enrichment, metadata extraction, confidence scoring, and merchant aggregation all live in one class. Can't unit-test any component in isolation. Split target: `parsers/excel_parser.py`, `parsers/pdf_parser.py`, `enrichers/narration_enricher.py`, `scorers/confidence_scorer.py`. Best deferred to BSA-09 (Flask cutover) — at that point there's one canonical copy.  
+**Effort:** 4–6 hours. Deferred to Sprint-02/03.
 
 ---
 
-## Priority 3 — Improve When Possible (carried open)
-
-### TD-018 ⬜ 🟡 `TransactionTable` renders all rows at once
-No pagination/virtualization. Add page controls or `@tanstack/react-virtual` before multi-statement/history features increase row counts.
-
-### TD-019 ⬜ 🟢 No Dockerfile / docker-compose
-Manual venv + npm setup. Add a backend `Dockerfile` and a `docker-compose.yml`. **Blocked by TD-001** — a Docker build will fail on the UTF-16 requirements file.
-
-### TD-020 ⬜ 🟢 `.gitIgnore` capitalized
-Still `.gitIgnore` (capital I). Not recognized by git on case-sensitive filesystems → `__pycache__`, `.pyc`, `venv/`, and possibly `.env` get tracked. Rename to `.gitignore`; confirm it ignores `**/__pycache__/`, `*.pyc`, `venv/`, `.env`. Low effort, real secret-leak risk.
+### TD-008 ⬜ 🟠 Column-detection logic duplicated between Excel and PDF paths
+**Files:** `analyzeModel.py` / `analyzer.py`  
+**Score:** Impact 3 · Risk 3 · Effort 2 → **Priority 24**  
+**Description:** Identical `find_column([...])` sequences and the credit/debit/amount → `(amount, type)` resolution appear independently in `_process_excel_csv()` and `_process_pdf_transactions()`. Extract `_detect_columns(df) -> ColumnMap` and `_resolve_amount(row, cols)`. Removes ~80 lines and eliminates a drift risk. Do alongside TD-007.
 
 ---
 
-## New debt found on 2026-05-30
+### TD-021 ⬜ 🟠 Multi-page PDF: continuation rows silently dropped
+**Files:** `analyzeModel.py` / `analyzer.py`  
+**Score:** Impact 4 · Risk 4 · Effort 3 → **Priority 24**  
+**Description:** `_process_pdf_transactions` treats `table[0]` as the header for every extracted table. When a bank statement spans pages and the table continues without repeating its header, the first data row of page 2+ is consumed as column names and the rest skipped — silent data loss. Fix: carry the last-seen header forward across pages, or stitch tables by coordinates.  
+**Effort:** 3–5 hours. Real data-loss bug — schedule for Sprint-02.
 
-### TD-021 ⬜ 🟠 Multi-page PDF tables drop continuation rows
-`_process_pdf_transactions` treats `table[0]` as the header for every extracted table. When a transaction table continues onto the next page without repeating its header, that page's first data row is consumed as headers and the whole table is then skipped — silent data loss with no error surfaced. Carry the last good header forward, or stitch rows across pages via coordinate-based extraction. (See code-review CR-C-01.) Directly affects the PDF-compatibility goal.
+---
 
-### TD-022 ⬜ 🟠 Dead `verify_bank_account_with_pennyless` ships hardcoded identity data
-Never called, but still present with `name="stco"`, `mobile="9999999999"`. Delete until the integration is real, or gate behind a flag and source the values from the request. (code-review CR-S-02.)
+## Priority 3 — Improve When Possible
 
-### TD-023 ⬜ 🟡 Upload validation trusts the extension, not the bytes
-A non-PDF renamed to `.pdf` passes the gate. Low blast radius (parsers fail safely) but verify magic bytes (`%PDF`, `PK\x03\x04`) for defense in depth. (code-review CR-S-03.)
+### TD-016 ⚠️ pytest exists for Flask only — FastAPI coverage is zero
+**Status:** Partially resolved (Flask pytest added TD-016 in Sprint-01). FastAPI coverage tracked as TD-031 above.  
+**Remaining:** Add `backend-v2/tests/` with httpx-based async tests.
 
-### TD-024 ⬜ 🟡 No transaction de-duplication
-Overlapping/ repeated table extraction can inject duplicate transactions, skewing totals and `merchant_insights`. Dedupe on `(date, amount, narration, balance)` before scoring. (code-review CR-C-05.)
+---
+
+### TD-023 ⬜ 🟡 Upload validation trusts extension, not file bytes
+**File:** `analyzeController.py` / `analyze.py`  
+**Score:** Impact 2 · Risk 3 · Effort 2 → **Priority 20**  
+**Description:** A `.exe` renamed to `.pdf` clears the extension whitelist. Low blast radius (parsers fail fast), but verify magic bytes (`%PDF`, `PK\x03\x04`) for defense in depth.  
+**Effort:** 1–2 hours.
+
+---
+
+### TD-024 ⬜ 🟡 No transaction deduplication
+**Files:** `analyzeModel.py` / `analyzer.py`  
+**Score:** Impact 3 · Risk 2 · Effort 2 → **Priority 20**  
+**Description:** Overlapping table extractions (common in multi-page PDFs) can produce duplicate transactions, inflating totals and merchant insights. Dedupe on `(date, amount, narration, balance)` before scoring.  
+**Effort:** 1–2 hours.
+
+---
 
 ### TD-025 ⬜ 🟡 `transaction_reference` fallback regex grabs any 10+ digit run
-Can capture beneficiary account or mobile numbers instead of the real reference. Require a labeled prefix (RRN/UTR/REF/TXN) or prefer UTR-shaped 12/16-digit candidates. (code-review CR-C-02.)
-
-### TD-026 ⬜ 🟡 Confidence score penalizes balance-less formats systematically
-The unconditional `-0.05` for missing `balance` drags down every transaction from formats that legitimately lack a running balance (many credit-card/CSV exports). Make the penalty conditional on whether the format carries balances at all. (code-review CR-C-04.)
-
-### TD-027 ⬜ 🟡 No `GET /api/health` endpoint
-Blocks container/orchestrator/uptime monitoring. 3-line add in the current Flask app; also an action item in the FastAPI ADR. Do it now rather than waiting for the migration. (code-review CR-M-01.)
+**Files:** `analyzeModel.py` / `analyzer.py`  
+**Score:** Impact 2 · Risk 2 · Effort 2 → **Priority 20**  
+**Description:** The fallback captures beneficiary account or mobile numbers. Require a labeled prefix (RRN/UTR/REF/TXN) or prefer UTR-shaped 12/16-digit candidates.  
+**Effort:** 1–2 hours.
 
 ---
 
-## Updated Summary Table
+### TD-026 ⬜ 🟡 Confidence score penalizes balance-less formats unconditionally
+**Files:** `analyzeModel.py` / `analyzer.py`  
+**Score:** Impact 2 · Risk 1 · Effort 2 → **Priority 15**  
+**Description:** `-0.05` for missing `balance` drags down every transaction from formats that legitimately lack a running balance (credit card exports, many CSV formats). Make the penalty conditional on whether the statement format carries balances at all.  
+**Effort:** 1 hour.
+
+---
+
+### TD-018 ⬜ 🟡 `TransactionTable` renders all rows with no virtualization
+**File:** `frontend/`  
+**Score:** Impact 2 · Risk 1 · Effort 3 → **Priority 9**  
+**Description:** Statements with 500+ transactions will cause jank. Add `@tanstack/react-virtual` or basic pagination before multi-statement/history features increase row counts.  
+**Effort:** 2–3 hours.
+
+---
+
+## Priority 4 — Backlog
+
+### TD-019 ⬜ 🟢 No Dockerfile / docker-compose
+**Score:** Impact 2 · Risk 1 · Effort 3 → **Priority 9**  
+**Description:** Manual venv + npm setup. Add `backend-v2/Dockerfile` + `docker-compose.yml`. Unblocked now that TD-001 is genuinely fixed.
+
+### TD-001 ⚠️ 🔴 `requirements.txt` UTF-16 — WATCH
+**File:** `backend/requirements.txt`  
+**Status:** Fixed twice (2026-05-29, 2026-05-31). Add a CI guard so it can't regress:
+```bash
+# In CI / pre-commit hook:
+file backend/requirements.txt | grep -qE 'ASCII|UTF-8' || (echo "requirements.txt is not UTF-8!" && exit 1)
+```
+This item stays in the backlog until that guard exists.
+
+---
+
+## Prioritized Action Plan
+
+### Sprint-02 P0 (fix in first 2 hours)
+
+| ID | Fix | Est. |
+|----|-----|------|
+| TD-028 | `reload=True` → env-controlled | 5 min |
+| TD-029 | Delete `import requests` + dep | 5 min |
+| TD-030 | CORS wildcards → explicit lists | 5 min |
+| TD-032 | `UPLOAD_DIR` → file-relative path | 5 min |
+
+These four are all 1-liner fixes that belong in a single "FastAPI housekeeping" commit.
+
+### Sprint-02 P1 (functional value)
+
+| ID | Fix | Est. |
+|----|-----|------|
+| TD-031 | FastAPI integration tests (httpx) | 3–4h |
+| TD-021 | Multi-page PDF row stitching | 3–5h |
+| TD-024 | Transaction deduplication | 1–2h |
+
+### Sprint-02/03 (architectural)
+
+| ID | Fix | Est. |
+|----|-----|------|
+| TD-007 | Split monolithic analyzer | 4–6h |
+| TD-008 | Extract shared column detection | paired with TD-007 |
+| TD-019 | Docker + compose | 2h |
+| TD-023 | Magic-byte upload validation | 1–2h |
+
+---
+
+## Full Item Table
 
 | ID | Status | Sev | Area | Description |
 |----|--------|-----|------|-------------|
-| TD-001 | ⚠️ Reopened | 🔴 | Backend | requirements.txt still UTF-16 — pip install fails |
+| TD-001 | ⚠️ Watch | 🔴 | Backend | requirements.txt UTF-16 — add CI guard |
 | TD-002 | ✅ | 🔴 | Backend | Config integration vars defined |
 | TD-003 | ✅ | 🔴 | Backend | .env.example added |
-| TD-004 | ✅ | 🔴 | Backend | debug env-controlled |
-| TD-005 | ✅ | 🔴 | Backend | uploaded files cleaned up |
-| TD-006 | ✅ | 🟠 | Backend | dead classes removed |
-| TD-007 | ⬜ | 🟠 | Backend | monolithic 1,280-line model |
-| TD-008 | ⬜ | 🟠 | Backend | column detection duplicated |
+| TD-004 | ✅ | 🔴 | Backend | Flask debug env-controlled |
+| TD-005 | ✅ | 🔴 | Backend | Uploaded files cleaned up |
+| TD-006 | ✅ | 🟠 | Backend | Dead classes removed |
+| TD-007 | ⬜ | 🟠 | Backend | Monolithic 1,280-line model |
+| TD-008 | ⬜ | 🟠 | Backend | Column detection duplicated |
 | TD-009 | ✅ | 🟠 | Backend | sklearn imports removed |
 | TD-010 | ✅ | 🟠 | Frontend | API URL via env var |
-| TD-011 | ✅ | 🟠 | Backend | file size/ext validation (ext-only) |
+| TD-011 | ✅ | 🟠 | Backend | File size/ext validation (ext-only) |
 | TD-012 | ✅ | 🟡 | Backend | logging replaces print |
-| TD-013 | ✅ | 🟡 | Backend | double assignment fixed |
-| TD-014 | ✅ | 🟡 | Backend | dead vars removed |
+| TD-013 | ✅ | 🟡 | Backend | Double assignment fixed |
+| TD-014 | ✅ | 🟡 | Backend | Dead vars removed |
 | TD-015 | ✅ | 🟡 | Backend | PDF confidence_score added |
-| TD-016 | ⬜ | 🟠 | Testing | zero test coverage (raised) |
-| TD-017 | ✅ | 🟡 | Backend | CORS default tightened |
-| TD-018 | ⬜ | 🟡 | Frontend | table renders all rows |
-| TD-019 | ⬜ | 🟢 | Infra | no Docker (blocked by TD-001) |
-| TD-020 | ⬜ | 🟢 | Repo | .gitIgnore capitalized |
-| TD-021 | ⬜ | 🟠 | Backend | multi-page PDF rows dropped |
-| TD-022 | ⬜ | 🟠 | Backend | dead Pennyless fn + hardcoded identity |
-| TD-023 | ⬜ | 🟡 | Backend | validation trusts extension not bytes |
-| TD-024 | ⬜ | 🟡 | Backend | no transaction dedupe |
+| TD-016 | ⚠️ Partial | 🟠 | Testing | Flask pytest done; FastAPI tests → TD-031 |
+| TD-017 | ✅ | 🟡 | Backend | CORS default tightened (Flask) |
+| TD-018 | ⬜ | 🟡 | Frontend | Table renders all rows |
+| TD-019 | ⬜ | 🟢 | Infra | No Docker |
+| TD-020 | ✅ | 🟢 | Repo | .gitIgnore → .gitignore |
+| TD-021 | ⬜ | 🟠 | Backend | Multi-page PDF rows dropped |
+| TD-022 | ✅ | 🟠 | Backend | Dead Pennyless fn deleted (Flask) |
+| TD-023 | ⬜ | 🟡 | Backend | Validation trusts extension not bytes |
+| TD-024 | ⬜ | 🟡 | Backend | No transaction deduplication |
 | TD-025 | ⬜ | 🟡 | Backend | txn_reference regex over-greedy |
-| TD-026 | ⬜ | 🟡 | Backend | confidence penalizes balance-less formats |
-| TD-027 | ⬜ | 🟡 | Backend | no /api/health endpoint |
+| TD-026 | ⬜ | 🟡 | Backend | Confidence penalizes balance-less formats |
+| TD-027 | ✅ | 🟡 | Backend | /api/health added to Flask |
+| TD-028 | ✅ | 🔴 | FastAPI | reload=True hardcoded in run.py |
+| TD-029 | ✅ | 🔴 | FastAPI | Dead `import requests` + dep in requirements |
+| TD-030 | ✅ | 🟠 | FastAPI | CORS wildcards with allow_credentials=True |
+| TD-031 | ⬜ | 🟠 | FastAPI | Zero integration tests for FastAPI routes |
+| TD-032 | ✅ | 🟡 | FastAPI | UPLOAD_DIR is cwd-relative, not file-relative |
 
 ---
 
-## Recommended next-sprint slice (low effort, high value)
-
-1. TD-001 (re-encode + CI guard) — unblocks everything
-2. TD-020 (`.gitignore` rename) — secret-leak prevention, 1 command
-3. TD-027 (`/api/health`) — unblocks monitoring, 3 lines
-4. TD-022 (delete dead Pennyless fn) — removes hardcoded data
-5. TD-016 (stand up pytest) — before the FastAPI port, not after
-6. TD-021 (multi-page PDF stitching) — real data-loss bug on the PDF goal
-
----
-
-*Line-level findings in `code-review.md`. Forward-looking feature analysis in `improvement-analysis.md`.*
+*Code review: `docs/code-review.md` · Sprint plan: `docs/sprint-01-plan.md` · Architecture: `docs/architecture.md`*
