@@ -5,6 +5,34 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-13 — TD-028: Replace hardcoded reload=True with UVICORN_RELOAD env var
+**Type:** Bug fix
+**Change:** `backend-v2/run.py` read `UVICORN_RELOAD` env var (default `"false"`) instead of hard-coding `reload=True`. Mirrors the Flask `debug=True` fix from Sprint-01. In production, hot-reload causes double-startup and exposes Uvicorn internals.
+**Files affected:** backend-v2/run.py
+
+---
+
+## 2026-06-13 — TD-029: Remove dead `import requests` from FastAPI analyzer
+**Type:** Cleanup
+**Change:** Removed `import requests` from `backend-v2/app/models/analyzer.py` and `requests==2.32.5` from `backend-v2/requirements.txt`. The only caller (`verify_bank_account_with_pennyless`) was deleted in Sprint-01; the import was never cleaned up in the FastAPI copy.
+**Files affected:** backend-v2/app/models/analyzer.py, backend-v2/requirements.txt
+
+---
+
+## 2026-06-13 — TD-030: Fix CORS wildcard + credentials violation in FastAPI
+**Type:** Bug fix
+**Change:** Replaced `allow_methods=["*"]` and `allow_headers=["*"]` with explicit lists (`["GET", "POST", "OPTIONS"]` and `["Content-Type", "Authorization"]`) in `backend-v2/app/main.py`. The CORS spec forbids wildcards when `allow_credentials=True`; this would silently break once auth is added.
+**Files affected:** backend-v2/app/main.py
+
+---
+
+## 2026-06-13 — TD-032: Anchor UPLOAD_DIR to file location in FastAPI router
+**Type:** Bug fix
+**Change:** `UPLOAD_DIR` in `backend-v2/app/routers/analyze.py` changed from `Path("uploads")` (relative to launch CWD) to `Path(__file__).parent.parent.parent / "uploads"` (always resolves to `backend-v2/uploads/` regardless of where uvicorn is launched from).
+**Files affected:** backend-v2/app/routers/analyze.py
+
+---
+
 ## 2026-05-31 — BSA-03: Port POST /api/analyze/bank/statement to FastAPI
 **Type:** Feature (migration)
 **Change:** Added /api/analyze/bank/statement to FastAPI backend (backend-v2). BankStatementAnalyzer runs inside asyncio.to_thread() so CPU-bound parsing never blocks the event loop. File validation (extension whitelist, 20 MB size cap) and cleanup (finally-block unlink) mirror the Flask controller exactly. Flask backend unchanged and still running on port 5000.

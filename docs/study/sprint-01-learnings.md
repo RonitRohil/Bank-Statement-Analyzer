@@ -195,10 +195,39 @@ Indian banking narrations have highly structured formats that regex handles well
 
 ---
 
-## 6. What's Next (Sprint 02)
+## 6. What Actually Shipped (Sprint-01 Final State)
 
-- [ ] FastAPI scaffold — `backend-v2/` with health endpoint and Pydantic models (BSA-02)
-- [ ] Port `/api/analyze/bank/statement` to FastAPI (BSA-03)
-- [ ] LLM categorization fallback using Claude Haiku (BSA-04)
-- [ ] Automated financial summary endpoint (BSA-05)
-- [ ] FinanceAssistant Phase 2 top priority feature
+> This section was updated 2026-06-13 to reflect what was actually committed — BSA-02/03 were completed during Sprint-01 (not deferred to Sprint-02 as originally planned).
+
+| Task | Status | Notes |
+|------|--------|-------|
+| BSA-02 — FastAPI scaffold | ✅ Shipped | `backend-v2/` with Pydantic settings, CORS, schemas, `/api/health` |
+| BSA-03 — Analyze endpoint port | ✅ Shipped | `asyncio.to_thread` pattern, file lifecycle mirrored, `response_model=AnalyzeResponse` |
+| TD-016 — pytest | ✅ Shipped | 23 passed, 1 xfail; Flask side only. FastAPI tests pending (TD-031) |
+| TD-027 — Flask /api/health | ✅ Shipped | |
+| TD-022 — Delete Pennyless fn | ✅ Shipped | Flask side deleted; `requests` import lingers in `backend-v2/analyzer.py` (TD-029) |
+| TD-020 — .gitignore fix | ✅ Shipped | |
+| TD-001 — requirements.txt UTF-8 | ✅ Re-fixed | Add CI guard to prevent regression |
+
+**Known issues in what shipped** (see `docs/tech-debt.md` for full detail):
+- `reload=True` hardcoded in `backend-v2/run.py` (TD-028 — same class of bug as original `debug=True`)
+- Dead `import requests` in `backend-v2/analyzer.py` (TD-029)
+- CORS wildcards with `allow_credentials=True` (TD-030)
+- `UPLOAD_DIR` is process-cwd-relative (TD-032)
+- No FastAPI integration tests (TD-031)
+
+## 7. What's Next (Sprint-02)
+
+**P0 housekeeping (30 min total):**
+- Fix TD-028, TD-029, TD-030, TD-032 — all 1-liners, one commit
+
+**P0 features:**
+- TD-031 — FastAPI integration tests with httpx (`backend-v2/tests/`)
+- BSA-04 — LLM categorization fallback using Claude Haiku
+- TD-021 — Multi-page PDF row stitching (silent data loss bug)
+
+**P1:**
+- BSA-09 — Full Flask cutover: point frontend at port 8000, decommission Flask
+- BSA-05 — Automated financial summary endpoint
+
+See `docs/sprint-02-plan.md` (to be created) for full Sprint-02 scope.

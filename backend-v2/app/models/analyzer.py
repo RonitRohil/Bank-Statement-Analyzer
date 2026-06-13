@@ -4,7 +4,6 @@ import pdfplumber
 import re
 import os
 from datetime import datetime
-import requests
 from collections import defaultdict
 
 logger = logging.getLogger(__name__)
