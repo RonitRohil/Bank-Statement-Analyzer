@@ -12,7 +12,7 @@ from app.models.schemas import AnalyzeResponse
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR = Path(__file__).parent.parent.parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 ALLOWED_EXTENSIONS = {".pdf", ".csv", ".xlsx", ".xls"}
