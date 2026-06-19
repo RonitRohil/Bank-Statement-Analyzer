@@ -5,6 +5,20 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-19 — BSA-10 / TD-031: FastAPI integration tests with httpx
+**Type:** Testing infrastructure
+**Change:** Added full pytest suite for the FastAPI backend (backend-v2/). 7 unit tests run against an in-process ASGI transport — no server required.
+- `conftest.py`: `AsyncClient` fixture via `ASGITransport` (same pattern as Flask's `test_client()`)
+- `tests/test_health.py`: 2 tests — status 200 + JSON shape
+- `tests/test_analyze.py`: 5 tests — CSV upload, response shape, bad extension (400), oversized file (413), required transaction fields
+- `tests/test_parity.py`: shape-parity test between Flask and FastAPI (marked `integration`; requires both servers running, excluded from standard CI)
+- `tests/fixtures/sample.csv`: 5-row minimal real-looking bank statement fixture
+- `pyproject.toml`: added `asyncio_mode = "auto"` and `asyncio_default_fixture_loop_scope = "function"` to suppress pytest-asyncio deprecation warning; added `integration` marker
+**Result:** 7 passed, 0 warnings. Unblocks BSA-09 (Flask cutover).
+**Files affected:** backend-v2/conftest.py (new), backend-v2/tests/__init__.py (new), backend-v2/tests/test_health.py (new), backend-v2/tests/test_analyze.py (new), backend-v2/tests/test_parity.py (new), backend-v2/tests/fixtures/sample.csv (new), backend-v2/pyproject.toml
+
+---
+
 ## 2026-06-19 — Bug fix: Merchant insights showing raw account numbers; account details not extracted
 **Type:** Bug fix
 **Root cause 1 (merchant insights):** `TransactionPatternTrainer.analyze()` fell back to `receiver_details.account` — a raw numeric string extracted from narrations (e.g. "609386161826") — as a merchant key when no named merchant was found. This produced dozens of meaningless numeric entries in the merchant insights panel.
