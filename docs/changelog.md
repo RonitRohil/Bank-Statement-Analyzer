@@ -5,6 +5,16 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-19 — Bug fix: Merchant insights showing raw account numbers; account details not extracted
+**Type:** Bug fix
+**Root cause 1 (merchant insights):** `TransactionPatternTrainer.analyze()` fell back to `receiver_details.account` — a raw numeric string extracted from narrations (e.g. "609386161826") — as a merchant key when no named merchant was found. This produced dozens of meaningless numeric entries in the merchant insights panel.
+**Fix:** Removed `receiver_details.account` from the merchant fallback chain. Now only uses `receiver_details.name` if it contains at least 2 alphabetic characters; otherwise groups as "UNKNOWN".
+**Root cause 2 (account details):** The first phone pattern in `_extract_metadata_from_text` (`\b(?:\+91[-\s]?)?[6-9]\d{9}\b`) had no capture group. When a phone number appeared in the CSV metadata rows, `match.group(1)` raised `IndexError`, silently crashing the entire metadata extraction and returning `{}` for all account info fields.
+**Fix:** Replaced the broken phone patterns with labeled-keyword patterns that always have a capture group. Also fixed `account_holder` patterns: removed the overly strict lookahead (`(?=\s*(?:account|bank|...))`  that almost never matched); added simpler `customer name:` / `account holder name:` patterns. Moved hardcoded bank name list to first position in `bank_name` patterns (most reliable).
+**Files affected:** backend/app/models/analyzeModel.py, backend-v2/app/models/analyzer.py
+
+---
+
 ## 2026-06-13 — TD-028: Replace hardcoded reload=True with UVICORN_RELOAD env var
 **Type:** Bug fix
 **Change:** `backend-v2/run.py` read `UVICORN_RELOAD` env var (default `"false"`) instead of hard-coding `reload=True`. Mirrors the Flask `debug=True` fix from Sprint-01. In production, hot-reload causes double-startup and exposes Uvicorn internals.

@@ -14,7 +14,6 @@ from app.config.config import Config
 logger = logging.getLogger(__name__)
 
 
-
 class AnalyzeModel:
     def __init__(self, db=None):
         self.db = db
@@ -125,7 +124,9 @@ class BankStatementAnalyzer:
             return amount
 
         except ValueError:
-            logger.debug("[parse_amount] Could not parse amount: '%s'. Returning None.", val)
+            logger.debug(
+                "[parse_amount] Could not parse amount: '%s'. Returning None.", val
+            )
             return None
         except Exception as e:
             logger.debug("[parse_amount] Unexpected error parsing '%s': %s", val, e)
@@ -224,7 +225,9 @@ class BankStatementAnalyzer:
     def _process_excel_csv(self):
         try:
             if self.file_path.endswith(".csv"):
-                raw_df = pd.read_csv(self.file_path, header=None, dtype=str)
+                raw_df = pd.read_csv(
+                    self.file_path, header=None, dtype=str, on_bad_lines="skip"
+                )
             else:
                 raw_df = pd.read_excel(self.file_path, header=None, dtype=str)
 
@@ -232,7 +235,12 @@ class BankStatementAnalyzer:
 
             # Read again with the detected header
             if self.file_path.endswith(".csv"):
-                df = pd.read_csv(self.file_path, header=header_row_index, dtype=str)
+                df = pd.read_csv(
+                    self.file_path,
+                    header=header_row_index,
+                    dtype=str,
+                    on_bad_lines="skip",
+                )
             else:
                 df = pd.read_excel(self.file_path, header=header_row_index, dtype=str)
 
@@ -296,8 +304,12 @@ class BankStatementAnalyzer:
             if not all(required_cols) or not (credit_col or debit_col or amount_col):
                 logger.warning(
                     "Missing critical columns in %s. Date: %s, Narration: %s, Amount: %s/%s/%s",
-                    self.file_path, transaction_date_col, narration_col,
-                    credit_col, debit_col, amount_col,
+                    self.file_path,
+                    transaction_date_col,
+                    narration_col,
+                    credit_col,
+                    debit_col,
+                    amount_col,
                 )
                 return {
                     "success": 0,
@@ -347,7 +359,9 @@ class BankStatementAnalyzer:
                     )
 
                     if not narration and amount is None:
-                        logger.debug("Skipping row %s: No narration or amount present.", index)
+                        logger.debug(
+                            "Skipping row %s: No narration or amount present.", index
+                        )
                         continue
 
                     transaction_date_str = (
@@ -378,7 +392,12 @@ class BankStatementAnalyzer:
                     transactions.append(txn_obj)
 
                 except Exception as inner_err:
-                    logger.warning("Skipping row %s due to parsing error: %s", index, inner_err, exc_info=True)
+                    logger.warning(
+                        "Skipping row %s due to parsing error: %s",
+                        index,
+                        inner_err,
+                        exc_info=True,
+                    )
 
             meta_info = self._extract_metadata_from_df(raw_df)
 
@@ -415,7 +434,12 @@ class BankStatementAnalyzer:
             }
 
         except Exception as e:
-            logger.error("Failed to analyze Excel/CSV bank statement: %s — %s", self.file_path, e, exc_info=True)
+            logger.error(
+                "Failed to analyze Excel/CSV bank statement: %s — %s",
+                self.file_path,
+                e,
+                exc_info=True,
+            )
             return {
                 "success": 0,
                 "status_code": get_status_code("INTERNAL_SERVER_ERROR"),
@@ -449,16 +473,22 @@ class BankStatementAnalyzer:
                                 tables_df_list.append(df)
                                 logger.debug(
                                     "Page %s, Table %s extracted with columns: %s",
-                                    page_num + 1, table_idx + 1, df.columns.tolist(),
+                                    page_num + 1,
+                                    table_idx + 1,
+                                    df.columns.tolist(),
                                 )
                             except Exception as df_create_err:
                                 logger.warning(
                                     "Could not create DataFrame from PDF table on page %s, table %s: %s",
-                                    page_num + 1, table_idx + 1, df_create_err,
+                                    page_num + 1,
+                                    table_idx + 1,
+                                    df_create_err,
                                 )
 
             if not tables_df_list:
-                logger.warning("No tables found or extracted from PDF: %s", self.file_path)
+                logger.warning(
+                    "No tables found or extracted from PDF: %s", self.file_path
+                )
                 meta_info = self._extract_metadata_from_text(all_text)
                 return {
                     "success": 0,
@@ -528,7 +558,11 @@ class BankStatementAnalyzer:
                 ):
                     logger.warning(
                         "Skipping PDF table: missing critical columns. Date: %s, Narration: %s, Amount: %s/%s/%s",
-                        date_col, narration_col, credit_col, debit_col, amount_col,
+                        date_col,
+                        narration_col,
+                        credit_col,
+                        debit_col,
+                        amount_col,
                     )
                     continue
 
@@ -558,7 +592,9 @@ class BankStatementAnalyzer:
                             and debit is None
                             and general_amount is None
                         ):
-                            logger.debug("Skipping PDF row: no amount information found.")
+                            logger.debug(
+                                "Skipping PDF row: no amount information found."
+                            )
                             continue
 
                         narration = (
@@ -567,7 +603,9 @@ class BankStatementAnalyzer:
                             else ""
                         )
                         if not narration and amount is None:
-                            logger.debug("Skipping PDF row: no narration or amount present.")
+                            logger.debug(
+                                "Skipping PDF row: no narration or amount present."
+                            )
                             continue
 
                         transaction_date_str = (
@@ -598,7 +636,9 @@ class BankStatementAnalyzer:
                         transactions.append(txn_obj)
 
                     except Exception as row_err:
-                        logger.warning("Skipping PDF row due to error: %s", row_err, exc_info=True)
+                        logger.warning(
+                            "Skipping PDF row due to error: %s", row_err, exc_info=True
+                        )
 
             # Account metadata from full text
             meta_info = self._extract_metadata_from_text(all_text)
@@ -608,8 +648,13 @@ class BankStatementAnalyzer:
                 txn["confidence_score"] = self.calculate_confidence_score(txn)
 
             overall_confidence = (
-                round(sum(t["confidence_score"] for t in transactions) / len(transactions), 2)
-                if transactions else 0.0
+                round(
+                    sum(t["confidence_score"] for t in transactions)
+                    / len(transactions),
+                    2,
+                )
+                if transactions
+                else 0.0
             )
 
             return {
@@ -626,12 +671,19 @@ class BankStatementAnalyzer:
                             1 for t in transactions if t["confidence_score"] >= 0.85
                         ),
                     },
-                    "merchant_insights": TransactionPatternTrainer().analyze(transactions),
+                    "merchant_insights": TransactionPatternTrainer().analyze(
+                        transactions
+                    ),
                 },
             }
 
         except Exception as e:
-            logger.error("Failed to analyze PDF bank statement: %s — %s", self.file_path, e, exc_info=True)
+            logger.error(
+                "Failed to analyze PDF bank statement: %s — %s",
+                self.file_path,
+                e,
+                exc_info=True,
+            )
             return {
                 "success": 0,
                 "status_code": get_status_code("INTERNAL_SERVER_ERROR"),
@@ -679,7 +731,13 @@ class BankStatementAnalyzer:
             for fmt in possible_formats:
                 try:
                     parsed = datetime.strptime(date_input, fmt)
-                    logger.debug("[Parsed] Row %s: '%s' → %s using %s", row_index, date_input, parsed.strftime("%Y-%m-%d"), fmt)
+                    logger.debug(
+                        "[Parsed] Row %s: '%s' → %s using %s",
+                        row_index,
+                        date_input,
+                        parsed.strftime("%Y-%m-%d"),
+                        fmt,
+                    )
                     return parsed.strftime("%Y-%m-%d")
                 except ValueError:
                     continue
@@ -688,7 +746,12 @@ class BankStatementAnalyzer:
         try:
             parsed = pd.to_datetime(date_input, errors="coerce", dayfirst=False)
             if pd.notna(parsed):
-                logger.debug("[Pandas Parsed] Row %s: '%s' → %s", row_index, date_input, parsed.strftime("%Y-%m-%d"))
+                logger.debug(
+                    "[Pandas Parsed] Row %s: '%s' → %s",
+                    row_index,
+                    date_input,
+                    parsed.strftime("%Y-%m-%d"),
+                )
                 return parsed.strftime("%Y-%m-%d")
         except Exception as e:
             logger.debug("[Fallback Error] Row %s: '%s' — %s", row_index, date_input, e)
@@ -709,8 +772,13 @@ class BankStatementAnalyzer:
             try:
                 header_row_index = self.detect_header_row(raw_df)
                 if self.file_path.endswith(".csv"):
+                    skip_rows = list(range(header_row_index))
                     df_for_dates = pd.read_csv(
-                        self.file_path, header=header_row_index, dtype=str
+                        self.file_path,
+                        skiprows=skip_rows,
+                        header=0,
+                        dtype=str,
+                        on_bad_lines="skip",
                     )
                 else:
                     df_for_dates = pd.read_excel(
@@ -723,14 +791,18 @@ class BankStatementAnalyzer:
                     df_for_dates
                 )
             except Exception as e:
-                logger.warning("Could not determine statement range from excel for metadata: %s", e)
+                logger.warning(
+                    "Could not determine statement range from excel for metadata: %s", e
+                )
                 metadata["statement_period"] = {}
 
             logger.debug("Extracted Metadata: %s", metadata)
             return metadata
 
         except Exception as e:
-            logger.error("[Metadata Extraction Error - Excel/CSV]: %s", e, exc_info=True)
+            logger.error(
+                "[Metadata Extraction Error - Excel/CSV]: %s", e, exc_info=True
+            )
             return {}
 
     def _extract_metadata_from_text(self, text_blob):
@@ -753,26 +825,25 @@ class BankStatementAnalyzer:
                 r"\b(?:[Ii]nd[Oo]\s*)?(\d{11})\b",  # For Indian Bank accounts if specific format
             ],
             "account_holder": [
-                r"(?:account\s*name|account\s*holder|customer\s*name|name)\s*:?\s*([A-Z][A-Z\s\.&,']+)(?=\s*(?:account|bank|address|statement))",
-                r"(?:^|\n)\s*([A-Z][A-Z\s\.&,']+)\s+(?:A/C|Account|No)\s*:",  # Name followed by A/C
-                r"(\b[A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b(?=\s*\d{6,})",  # Name before an account number
+                r"(?:account\s*holder(?:\s*name)?|customer\s*(?:full\s*)?name|a/c\s*holder)\s*[:\.,]?\s*([A-Z][A-Za-z\s\.&,']{2,50}?)(?=\s+(?:Branch|Bank|Account\s*N|IFSC|Phone|Mobile|Email|Nomination|Currency|Statement|Address|Opening|Closing|\d{4,}|$))",
+                r"(?:holder\s*name|name\s*of\s*(?:account\s*holder|customer))\s*[:\.]?\s*([A-Z][A-Za-z\s\.]{2,40}?)(?=\s+\w+\s*[:\.,]|\s*$)",
             ],
             "bank_name": [
-                r"(?:bank\s*name|issued\s*by|bank)\s*:?\s*([A-Z][A-Z\s,.]+)\b",
                 r"\b(STATE BANK OF INDIA|HDFC BANK|ICICI BANK|AXIS BANK|PUNJAB NATIONAL BANK|YES BANK|KOTAK MAHINDRA BANK|UNION BANK OF INDIA|CANARA BANK|INDIAN BANK|INDUSIND BANK|FEDERAL BANK|RBL BANK|BANDHAN BANK|IDFC FIRST BANK)\b",
-                r"BANK NAME\s*:\s*([A-Z\s&.]+)",
+                r"(?:bank\s*name|issued\s*by)\s*[:\.]?\s*([A-Z][A-Za-z\s,.]+?)(?=\s+(?:account|branch|ifsc|\d))",
+                r"BANK NAME\s*[:\.]?\s*([A-Z\s&.]+)",
             ],
             "branch": [
-                r"(?:branch\s*name|branch)\s*:?\s*([A-Z][A-Z\s,.-]+)\b",
-                r"BRANCH\s*:\s*([A-Z\s&.]+)",
+                r"(?:branch\s*(?:name)?)\s*[:\.,]?\s*([A-Z][A-Za-z\s,.-]{2,40}?)(?=\s+(?:INDIA\b|IFSC|Nomination|Account|Customer|Currency|Statement|Phone|Mobile|Email|Opening|Closing|[A-Z]{4}0|\d{6,}|$))",
+                r"BRANCH\s*[:\.,]\s*([A-Z][A-Za-z\s&.-]{2,40}?)(?=\s+(?:INDIA\b|IFSC|Nomination|\d{6,}|$))",
             ],
             "ifsc_code": [
                 r"\b([A-Z]{4}0[A-Z0-9]{6})\b",  # Standard IFSC code pattern
                 r"(?:IFSC\s*Code|IFSC)\s*[:\.]?\s*([A-Z]{4}0[A-Z0-9]{6})\b",
             ],
             "phone": [
-                r"\b(?:\+91[-\s]?)?[6-9]\d{9}\b",
-                r"(?:tel|phone|mobile|ph\.?)\s*[:\.]?\s*(\+?\d[\d\s-]{7,}\d)\b",
+                r"(?:tel|phone|mobile|mob|ph\.?)\s*[:\.]?\s*(\+?91[-\s]?[6-9]\d{9}|[6-9]\d{9})",
+                r"(\+91[-\s]?[6-9]\d{9})\b",
             ],
             "email": [
                 r"\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}\b",
@@ -785,6 +856,19 @@ class BankStatementAnalyzer:
                 if match:
                     metadata[field] = match.group(1).strip()
                     break
+
+        if not metadata["bank_name"] and metadata.get("ifsc_code"):
+            _ifsc_bank_map = {
+                "KKBK": "Kotak Mahindra Bank", "HDFC": "HDFC Bank",
+                "ICIC": "ICICI Bank", "UTIB": "Axis Bank",
+                "SBIN": "State Bank of India", "PUNB": "Punjab National Bank",
+                "YESB": "Yes Bank", "CNRB": "Canara Bank",
+                "IOBA": "Indian Overseas Bank", "BARB": "Bank of Baroda",
+                "UBIN": "Union Bank of India", "INDB": "IndusInd Bank",
+                "FDRL": "Federal Bank", "RATN": "RBL Bank",
+                "BDBL": "Bandhan Bank", "IDFB": "IDFC FIRST Bank",
+            }
+            metadata["bank_name"] = _ifsc_bank_map.get(metadata["ifsc_code"][:4].upper())
 
         date_patterns = [
             r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{4})\b",  # DD/MM/YYYY or DD-MM-YYYY
@@ -1146,11 +1230,11 @@ class TransactionPatternTrainer:
         for txn in transactions:
             merchant = txn.get("merchant")
             if not merchant:
-                merchant = (
-                    txn.get("receiver_details", {}).get("name")
-                    or txn.get("receiver_details", {}).get("account")
-                    or "UNKNOWN"
-                )
+                receiver_name = txn.get("receiver_details", {}).get("name") or ""
+                if receiver_name and re.search(r"[A-Za-z]{2,}", receiver_name):
+                    merchant = receiver_name.strip()
+                else:
+                    merchant = "UNKNOWN"
             merchants[merchant].append(txn)
 
         insights = {}
