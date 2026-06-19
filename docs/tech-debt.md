@@ -13,7 +13,7 @@ Status: ✅ Resolved · ⚠️ Reopened · ⬜ Open
 
 | Resolved ✅ | Open ⬜ | Reopened ⚠️ |
 |------------|---------|-------------|
-| TD-002–006, 009–015, 017, 020, 022, 027 | TD-007, 008, 018, 019, 021, 023–026, 028–032 | TD-001, TD-016 |
+| TD-002–006, 009–015, 017, 020, 021, 022, 027 | TD-007, 008, 018, 019, 023–026, 028–032 | TD-001, TD-016 |
 
 **15 resolved, 14 open (5 carried + 5 FastAPI-new), 2 tracked special**
 
@@ -107,11 +107,10 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 ---
 
-### TD-021 ⬜ 🟠 Multi-page PDF: continuation rows silently dropped
+### TD-021 ✅ 🟠 Multi-page PDF: continuation rows silently dropped — **FIXED 2026-06-19**
 **Files:** `analyzeModel.py` / `analyzer.py`  
 **Score:** Impact 4 · Risk 4 · Effort 3 → **Priority 24**  
-**Description:** `_process_pdf_transactions` treats `table[0]` as the header for every extracted table. When a bank statement spans pages and the table continues without repeating its header, the first data row of page 2+ is consumed as column names and the rest skipped — silent data loss. Fix: carry the last-seen header forward across pages, or stitch tables by coordinates.  
-**Effort:** 3–5 hours. Real data-loss bug — schedule for Sprint-02.
+**Fix:** Added `_looks_like_header()` staticmethod; `_process_pdf_transactions` now carries `last_known_headers` across tables. Continuation pages (no header in `table[0]`) reuse the last seen header instead of consuming a data row as column names. Logged at DEBUG. Applied to both Flask and FastAPI backends.
 
 ---
 
@@ -198,7 +197,6 @@ These four are all 1-liner fixes that belong in a single "FastAPI housekeeping" 
 | ID | Fix | Est. |
 |----|-----|------|
 | TD-031 | FastAPI integration tests (httpx) | 3–4h |
-| TD-021 | Multi-page PDF row stitching | 3–5h |
 | TD-024 | Transaction deduplication | 1–2h |
 
 ### Sprint-02/03 (architectural)
@@ -236,7 +234,7 @@ These four are all 1-liner fixes that belong in a single "FastAPI housekeeping" 
 | TD-018 | ⬜ | 🟡 | Frontend | Table renders all rows |
 | TD-019 | ⬜ | 🟢 | Infra | No Docker |
 | TD-020 | ✅ | 🟢 | Repo | .gitIgnore → .gitignore |
-| TD-021 | ⬜ | 🟠 | Backend | Multi-page PDF rows dropped |
+| TD-021 | ✅ | 🟠 | Backend | Multi-page PDF rows dropped |
 | TD-022 | ✅ | 🟠 | Backend | Dead Pennyless fn deleted (Flask) |
 | TD-023 | ⬜ | 🟡 | Backend | Validation trusts extension not bytes |
 | TD-024 | ⬜ | 🟡 | Backend | No transaction deduplication |

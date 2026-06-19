@@ -1,7 +1,16 @@
 import pytest
 from pathlib import Path
+from app.models.analyzer import BankStatementAnalyzer
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
+
+def test_looks_like_header_identifies_headers():
+    assert BankStatementAnalyzer._looks_like_header(["Date", "Narration", "Debit", "Credit", "Balance"]) is True
+    assert BankStatementAnalyzer._looks_like_header(["01/01/2024", "UPI/123/Swiggy", "500.00", "", "24500.00"]) is False
+    assert BankStatementAnalyzer._looks_like_header(["", None, "", "", ""]) is False
+    assert BankStatementAnalyzer._looks_like_header([]) is False
+    assert BankStatementAnalyzer._looks_like_header(["Txn Date", "Particulars", "Amount", "Balance"]) is True
 
 
 async def test_analyze_csv_returns_200(client):

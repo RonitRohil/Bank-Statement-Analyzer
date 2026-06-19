@@ -139,6 +139,30 @@ class BankStatementAnalyzer:
         logger.debug("No clear header row detected, defaulting to row 0.")
         return 0  # Fallback to row 0
 
+    @staticmethod
+    def _looks_like_header(row):
+        if not row:
+            return False
+        header_keywords = {
+            "date",
+            "narration",
+            "description",
+            "debit",
+            "credit",
+            "amount",
+            "balance",
+            "particulars",
+            "withdrawal",
+            "deposit",
+            "txn",
+            "transaction",
+            "ref",
+            "details",
+            "chq",
+        }
+        row_text = " ".join(str(cell).lower() for cell in row if cell)
+        return any(kw in row_text for kw in header_keywords)
+
     def _get_statement_range_from_df(self, df):
         date_col = self.find_column(
             ["date", "txn_date", "transaction_date", "value_date"], df.columns
@@ -273,7 +297,10 @@ class BankStatementAnalyzer:
             # "cr" is a substring of "description" → credit_col gets the narration col.
             # Clear any credit/debit match that landed on a non-amount column.
             reserved_non_amount_cols = {
-                transaction_date_col, narration_col, balance_col, account_col
+                transaction_date_col,
+                narration_col,
+                balance_col,
+                account_col,
             }
             if credit_col in reserved_non_amount_cols:
                 credit_col = None
@@ -463,6 +490,7 @@ class BankStatementAnalyzer:
             transactions = []
             all_text = ""
             tables_df_list = []
+            last_known_headers = None
 
             with pdfplumber.open(self.file_path) as pdf:
                 for page_num, page in enumerate(pdf.pages):
@@ -473,28 +501,45 @@ class BankStatementAnalyzer:
 
                     tables = page.extract_tables()
                     for table_idx, table in enumerate(tables):
-                        if (
-                            table and len(table) > 1
-                        ):  # Ensure there's a header and at least one row
-                            try:
-                                df = pd.DataFrame(table[1:], columns=table[0])
-                                df.columns = [
-                                    self.clean_column_name(col) for col in df.columns
-                                ]
-                                tables_df_list.append(df)
+                        if not table or len(table) < 2:
+                            continue
+                        try:
+                            if self._looks_like_header(table[0]):
+                                headers = table[0]
+                                rows = table[1:]
+                                last_known_headers = headers
+                            elif last_known_headers is not None:
                                 logger.debug(
-                                    "Page %s, Table %s extracted with columns: %s",
+                                    "[PDF] Continuation table detected on page %s — reusing header from previous page",
                                     page_num + 1,
-                                    table_idx + 1,
-                                    df.columns.tolist(),
                                 )
-                            except Exception as df_create_err:
+                                headers = last_known_headers
+                                rows = table
+                            else:
                                 logger.warning(
-                                    "Could not create DataFrame from PDF table on page %s, table %s: %s",
+                                    "[PDF] First PDF table on page %s has no recognizable header — skipping",
                                     page_num + 1,
-                                    table_idx + 1,
-                                    df_create_err,
                                 )
+                                continue
+
+                            df = pd.DataFrame(rows, columns=headers)
+                            df.columns = [
+                                self.clean_column_name(col) for col in df.columns
+                            ]
+                            tables_df_list.append(df)
+                            logger.debug(
+                                "Page %s, Table %s extracted with columns: %s",
+                                page_num + 1,
+                                table_idx + 1,
+                                df.columns.tolist(),
+                            )
+                        except Exception as df_create_err:
+                            logger.warning(
+                                "Could not create DataFrame from PDF table on page %s, table %s: %s",
+                                page_num + 1,
+                                table_idx + 1,
+                                df_create_err,
+                            )
 
             if not tables_df_list:
                 logger.warning(
@@ -870,16 +915,26 @@ class BankStatementAnalyzer:
 
         if not metadata["bank_name"] and metadata.get("ifsc_code"):
             _ifsc_bank_map = {
-                "KKBK": "Kotak Mahindra Bank", "HDFC": "HDFC Bank",
-                "ICIC": "ICICI Bank", "UTIB": "Axis Bank",
-                "SBIN": "State Bank of India", "PUNB": "Punjab National Bank",
-                "YESB": "Yes Bank", "CNRB": "Canara Bank",
-                "IOBA": "Indian Overseas Bank", "BARB": "Bank of Baroda",
-                "UBIN": "Union Bank of India", "INDB": "IndusInd Bank",
-                "FDRL": "Federal Bank", "RATN": "RBL Bank",
-                "BDBL": "Bandhan Bank", "IDFB": "IDFC FIRST Bank",
+                "KKBK": "Kotak Mahindra Bank",
+                "HDFC": "HDFC Bank",
+                "ICIC": "ICICI Bank",
+                "UTIB": "Axis Bank",
+                "SBIN": "State Bank of India",
+                "PUNB": "Punjab National Bank",
+                "YESB": "Yes Bank",
+                "CNRB": "Canara Bank",
+                "IOBA": "Indian Overseas Bank",
+                "BARB": "Bank of Baroda",
+                "UBIN": "Union Bank of India",
+                "INDB": "IndusInd Bank",
+                "FDRL": "Federal Bank",
+                "RATN": "RBL Bank",
+                "BDBL": "Bandhan Bank",
+                "IDFB": "IDFC FIRST Bank",
             }
-            metadata["bank_name"] = _ifsc_bank_map.get(metadata["ifsc_code"][:4].upper())
+            metadata["bank_name"] = _ifsc_bank_map.get(
+                metadata["ifsc_code"][:4].upper()
+            )
 
         date_patterns = [
             r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{4})\b",  # DD/MM/YYYY or DD-MM-YYYY

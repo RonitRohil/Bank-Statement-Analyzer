@@ -5,6 +5,21 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-19 — TD-021: Fix silent data loss on multi-page PDF tables
+
+**Type:** Bug fix (data loss)
+**Root cause:** `_process_pdf_transactions()` always treated `table[0]` as the header row when iterating over pdfplumber's per-page table list. When a bank statement table continues onto page 2+ without repeating its header row, the first data row was consumed as column names and silently dropped. All subsequent rows were then skipped because the "detected columns" no longer matched any known column names. Statements spanning 4 pages could return only the first page's transactions with no error.
+**Fix:** Added `_looks_like_header(row)` as a `@staticmethod` on `BankStatementAnalyzer`. It checks whether any cell in a row matches known header keywords (`date`, `narration`, `debit`, `credit`, `balance`, etc.). In `_process_pdf_transactions`, before the pdfplumber loop, `last_known_headers = None` is initialized. For each extracted table:
+- If `table[0]` looks like a header → use it normally, update `last_known_headers`
+- If not and a previous header is known → reuse it (continuation page), all rows become data rows
+- If not and no header seen yet → log a warning and skip
+
+Logs `[PDF] Continuation table detected` at DEBUG for each continuation page.
+
+**Files affected:** `backend-v2/app/models/analyzer.py`, `backend/app/models/analyzeModel.py`, `backend-v2/tests/test_analyze.py`
+
+---
+
 ## 2026-06-19 — BSA-05: Add POST /api/analyze/bank/summary endpoint
 
 **Type:** Feature (financial summary)
