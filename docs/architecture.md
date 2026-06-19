@@ -6,6 +6,15 @@
 
 ---
 
+## Backend Status (as of Sprint-02)
+
+| Backend                 | Port | Status                                                      |
+| ----------------------- | ---- | ----------------------------------------------------------- |
+| FastAPI (`backend-v2/`) | 8000 | Active — all new development here; frontend now points here |
+| Flask (`backend/`)      | 5000 | Deprecated — removal scheduled Sprint-03                    |
+
+---
+
 ## 1. Overview
 
 Bank Statement Analyzer is a full-stack web application for parsing and visualizing bank statements (PDF, Excel, CSV). The user uploads a file through the React frontend; the Flask backend extracts transactions, enriches them with metadata (payment method, merchant, category), and returns structured JSON. The frontend renders it as an interactive dashboard.
@@ -60,28 +69,31 @@ Bank Statement Analyzer is a full-stack web application for parsing and visualiz
 ## 3. Backend Architecture
 
 ### Pattern
+
 Model-View-Controller (MVC) implemented via Flask Blueprints.
 
-| Layer | File | Responsibility |
-|-------|------|----------------|
-| Route | `app/routes/routes.py` | URL binding → controller method |
-| Controller | `app/controllers/analyzeController.py` | Request parsing, file save, response shaping |
-| Model | `app/models/analyzeModel.py` | All business logic: parsing, enrichment, scoring |
-| Config | `app/config/config.py` | Environment variable loading |
-| Constants | `app/constants/constants.py` | HTTP status code map |
+| Layer      | File                                   | Responsibility                                   |
+| ---------- | -------------------------------------- | ------------------------------------------------ |
+| Route      | `app/routes/routes.py`                 | URL binding → controller method                  |
+| Controller | `app/controllers/analyzeController.py` | Request parsing, file save, response shaping     |
+| Model      | `app/models/analyzeModel.py`           | All business logic: parsing, enrichment, scoring |
+| Config     | `app/config/config.py`                 | Environment variable loading                     |
+| Constants  | `app/constants/constants.py`           | HTTP status code map                             |
 
 ### Classes in `analyzeModel.py`
-| Class | Status | Role |
-|-------|--------|------|
-| `AnalyzeModel` | ✅ Used | Entry point — delegates to `BankStatementAnalyzer` |
-| `BankStatementAnalyzer` | ✅ Used | Core: file parsing, column detection, narration enrichment, date normalization |
-| `TransactionPatternTrainer` | ✅ Used | Merchant aggregation / insight generation |
+
+| Class                       | Status       | Role                                                                                |
+| --------------------------- | ------------ | ----------------------------------------------------------------------------------- |
+| `AnalyzeModel`              | ✅ Used      | Entry point — delegates to `BankStatementAnalyzer`                                  |
+| `BankStatementAnalyzer`     | ✅ Used      | Core: file parsing, column detection, narration enrichment, date normalization      |
+| `TransactionPatternTrainer` | ✅ Used      | Merchant aggregation / insight generation                                           |
 | `EnhancedNarrationAnalyzer` | ❌ Dead code | NLP-based entity extraction — incomplete, references `self.nlp` which doesn't exist |
-| `TransactionPatternLearner` | ❌ Dead code | Pattern learning skeleton — never instantiated |
-| `BalanceValidator` | ❌ Dead code | Running balance validation — never instantiated |
-| `EnhancedConfidenceScorer` | ❌ Dead code | Multi-signal confidence scoring — never instantiated |
+| `TransactionPatternLearner` | ❌ Dead code | Pattern learning skeleton — never instantiated                                      |
+| `BalanceValidator`          | ❌ Dead code | Running balance validation — never instantiated                                     |
+| `EnhancedConfidenceScorer`  | ❌ Dead code | Multi-signal confidence scoring — never instantiated                                |
 
 ### Dependencies (Backend)
+
 - **Flask 3.1.2** — web framework
 - **pdfplumber** — PDF table extraction
 - **pandas** — DataFrame manipulation
@@ -94,6 +106,7 @@ Model-View-Controller (MVC) implemented via Flask Blueprints.
 ## 4. Frontend Architecture
 
 ### Stack
+
 - **React 19** + **TypeScript**
 - **Vite 6** as build tool (dev port 3000)
 - **Recharts** for data visualization
@@ -101,6 +114,7 @@ Model-View-Controller (MVC) implemented via Flask Blueprints.
 - **Tailwind CSS** (CDN-based, inferred from class names in components)
 
 ### Component Tree
+
 ```
 App.tsx
 ├── FileUpload       — drag-and-drop file selector + loading state
@@ -112,12 +126,14 @@ App.tsx
 ```
 
 ### Data Flow
+
 1. User drops/selects file → `FileUpload` calls `uploadBankStatement(file)`
 2. `services/api.ts` sends `multipart/form-data` POST to `http://localhost:5000/api/analyze/bank/statement`
 3. On success, `AnalysisResult` stored in `App` state
 4. All child components receive data as props (no global state manager — correct for this scale)
 
 ### API Coupling
+
 The API base URL is hardcoded as `http://localhost:5000` in `services/api.ts`. There is no environment variable, making it impossible to point to a staging or production server without a code change.
 
 ---
@@ -125,6 +141,7 @@ The API base URL is hardcoded as `http://localhost:5000` in `services/api.ts`. T
 ## 5. Data Model
 
 ### API Response Shape
+
 ```json
 {
   "success": 1,
@@ -164,16 +181,16 @@ The API base URL is hardcoded as `http://localhost:5000` in `services/api.ts`. T
 
 ## 6. Infrastructure & Deployment
 
-| Concern | Current State |
-|---------|--------------|
-| Containerization | None — no Dockerfile or docker-compose |
-| Environment config | `.env` file required but no `.env.example` provided |
-| Process management | `python run.py` with `debug=True` — dev only |
-| File storage | Local `uploads/` directory — ephemeral, never purged |
-| Database | None — fully stateless |
-| Authentication | None on API endpoints |
-| HTTPS | Not configured |
-| CORS | Defaults to `*` wildcard if `CORS_URLS` env not set |
+| Concern            | Current State                                        |
+| ------------------ | ---------------------------------------------------- |
+| Containerization   | None — no Dockerfile or docker-compose               |
+| Environment config | `.env` file required but no `.env.example` provided  |
+| Process management | `python run.py` with `debug=True` — dev only         |
+| File storage       | Local `uploads/` directory — ephemeral, never purged |
+| Database           | None — fully stateless                               |
+| Authentication     | None on API endpoints                                |
+| HTTPS              | Not configured                                       |
+| CORS               | Defaults to `*` wildcard if `CORS_URLS` env not set  |
 
 ---
 
@@ -197,4 +214,4 @@ The API base URL is hardcoded as `http://localhost:5000` in `services/api.ts`. T
 
 ---
 
-*Next: See `system-design.md` for service-level design recommendations and `tech-debt.md` for a prioritized remediation list.*
+_Next: See `system-design.md` for service-level design recommendations and `tech-debt.md` for a prioritized remediation list._
