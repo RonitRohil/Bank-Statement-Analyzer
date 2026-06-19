@@ -43,6 +43,7 @@ class Transaction(BaseModel):
     transaction_type: Optional[str] = None
     receiver_details: Optional[ReceiverDetails] = None
     account: Optional[str] = None
+    llm_enriched: bool = False
 
 
 class ConfidenceSummary(BaseModel):

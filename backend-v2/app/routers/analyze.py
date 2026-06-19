@@ -8,6 +8,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from app.config.settings import settings
 from app.models.analyzer import BankStatementAnalyzer
 from app.models.schemas import AnalyzeResponse
+from app.services.llm_enricher import enrich_with_llm
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -46,6 +47,12 @@ async def analyze_statement(file: UploadFile = File(...)):
         http_status = result.get("status_code", 200)
         if http_status != 200:
             raise HTTPException(status_code=http_status, detail=result.get("message", "Analysis failed"))
+
+        if result.get("result", {}).get("transactions"):
+            result["result"]["transactions"] = await enrich_with_llm(
+                result["result"]["transactions"]
+            )
+
         return result
     except HTTPException:
         raise

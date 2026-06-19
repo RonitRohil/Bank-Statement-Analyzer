@@ -5,6 +5,29 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-19 — BSA-04: LLM categorization fallback via Ollama
+
+**Type:** Feature (AI enrichment)
+**Change:** Transactions where regex analysis returns `category=[]` are now enriched by a local Ollama model in async batches of 10. Uses `httpx.AsyncClient` against Ollama's OpenAI-compatible endpoint (`/v1/chat/completions`) — no new dependencies needed since `httpx` is already in requirements. LLM failure (Ollama not running, bad JSON, HTTP error) is fully caught and logged — the endpoint still returns results unchanged.
+
+**Provider decision:** Prompt (BSA-04) originally specified Claude Haiku (Anthropic). Switched to Ollama (`qwen2.5:7b`) for local development — Anthropic API is paid; Ollama is free and already in use in the FinanceAssistant project. Can be swapped back for production by changing the Ollama endpoint to a hosted model.
+
+- `backend-v2/app/services/llm_enricher.py` (new): `enrich_with_llm()` async function; builds batches, POSTs to Ollama, maps results back by index. `ConnectError` breaks the loop early (no point retrying batches if Ollama is down). Adds `llm_enriched=True` flag on enriched transactions. Logs prompt+completion token counts at DEBUG level.
+- `backend-v2/app/routers/analyze.py`: imports and calls `enrich_with_llm()` after `extract_transactions()` succeeds; runs only when transactions list is non-empty.
+- `backend-v2/app/config/settings.py`: added `ollama_base_url: str = "http://localhost:11434"` and `ollama_model: str = "qwen2.5:7b"` — matches FinanceAssistant defaults.
+- `backend-v2/app/models/schemas.py`: added `llm_enriched: bool = False` to `Transaction` — `True` when LLM filled the category.
+- `backend-v2/.env.example`: rewrote with all supported vars documented; added Ollama settings.
+- `backend-v2/app/services/__init__.py` (new): empty package init for the services module.
+
+**Constraints respected:**
+- LLM never called per-transaction; always batched (10/call).
+- Ollama not running → `ConnectError` caught, enrichment skipped, endpoint unaffected.
+- No new pip dependency — `httpx` already in requirements for test suite.
+
+**Files affected:** backend-v2/app/services/llm_enricher.py (new), backend-v2/app/services/__init__.py (new), backend-v2/app/routers/analyze.py, backend-v2/app/config/settings.py, backend-v2/app/models/schemas.py, backend-v2/.env.example
+
+---
+
 ## 2026-06-19 — BSA-09: Cut frontend over to FastAPI on port 8000; deprecate Flask
 
 **Type:** Feature (cutover)
