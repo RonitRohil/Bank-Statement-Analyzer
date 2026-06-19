@@ -5,6 +5,25 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-19 — BSA-05: Add POST /api/analyze/bank/summary endpoint
+
+**Type:** Feature (financial summary)
+**Change:** New stateless endpoint that accepts the transactions array returned by `/api/analyze/bank/statement` and computes a financial summary — no I/O, no LLM, no state.
+
+- `backend-v2/app/routers/summary.py` (new): `summarize_transactions()` — sync `def` (pure CPU math); computes income/expense totals, net, per-category spend breakdown with percentage-of-total, top 10 merchants by spend, transaction count, average transaction amount, and optional date range.
+- `backend-v2/app/models/schemas.py`: added `CategoryBreakdown`, `TopMerchant`, `SummaryResponse` Pydantic models.
+- `backend-v2/app/main.py`: imports and registers `summary.router`.
+
+**Design notes:**
+- Category totals are counted once per category per transaction (a multi-category transaction contributes full spend to each category). This means category percentages can sum to >100% — intentional; see prompt BSA-05 constraints.
+- Merchant breakdown covers expense (debit) transactions only; credits are excluded from category/merchant tallies.
+- `date_range` is derived from `transaction_date` strings via lexicographic sort (ISO YYYY-MM-DD format assumed from the analyze endpoint output).
+- Endpoint is `def` not `async def` — no I/O, so `asyncio.to_thread` would add overhead with no benefit.
+
+**Files affected:** backend-v2/app/routers/summary.py (new), backend-v2/app/models/schemas.py, backend-v2/app/main.py
+
+---
+
 ## 2026-06-19 — BSA-04: LLM categorization fallback via Ollama
 
 **Type:** Feature (AI enrichment)
