@@ -10,6 +10,7 @@ backend/app/controllers/__pycache__
 .env
 backend/.env
 frontend/.env
+frontend/.env.local
 backend/app/__pycache__
 backend/uploads
 __pycache__/
@@ -21,3 +22,4 @@ uploads/
 dist/
 node_modules/
 frontend/dist/
+statements/

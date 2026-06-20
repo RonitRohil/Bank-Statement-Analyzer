@@ -6,12 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Bank Statement Analyzer** is a full-stack application for parsing and analyzing bank statements (PDF, Excel, CSV). Users upload files through a React frontend; the backend extracts and enriches transactions with metadata (payment method, merchant, category, confidence scores), and returns structured JSON for visualization in an interactive dashboard.
 
-- **Backend (v1 — active)**: Flask 3.1.2 on port 5000 — original synchronous backend
-- **Backend (v2 — migration in progress)**: FastAPI 0.115 on port 8000 — async, Pydantic v2, Swagger UI; `POST /api/analyze/bank/statement` and `GET /api/health` already ported
+- **Backend (v1 — deprecated)**: Flask 3.1.2 on port 5000 — scheduled for removal Sprint-03
+- **Backend (v2 — active)**: FastAPI 0.115 on port 8000 — async, Pydantic v2, Swagger UI; all endpoints ported; frontend now points here
 - **Frontend**: React 19 + TypeScript + Vite, data visualization with Recharts
 - **Key Features**: Multi-format document parsing, narration analysis (UPI, IMPS, NEFT, card payments), merchant insights, confidence scoring, account metadata extraction
 
-**Migration status:** Flask (port 5000) stays running until parity is confirmed; FastAPI (port 8000) is the target. Next step: BSA-09 (frontend cutover + Flask decommission).
+**Migration status (BSA-09 complete):** Frontend now points to FastAPI (port 8000). Flask (port 5000) kept for one sprint as rollback; removal scheduled Sprint-03.
 
 ## Development Setup
 
@@ -66,8 +66,9 @@ cd frontend
 # Install dependencies
 npm install
 
-# Create .env.local (example in README.md)
-# Requires: VITE_API_URL=http://localhost:5000
+# Create .env.local (example in .env.example)
+# Requires: VITE_API_URL=http://localhost:8000  (FastAPI — active)
+# Legacy: VITE_API_URL=http://localhost:5000    (Flask — deprecated, removal Sprint-03)
 
 # Run dev server (port 3000)
 npm run dev
@@ -88,7 +89,7 @@ Browser (React/TypeScript, port 3000)
     ↓ [Drag-drop file or click upload]
 FileUpload component
     ↓ [FormData POST to /api/analyze/bank/statement]
-Flask Backend (port 5000)
+FastAPI Backend (port 8000) ← active; Flask (port 5000) deprecated
     ├─ AnalyzeController: validates request, saves file to uploads/
     ├─ AnalyzeModel: routes to appropriate processor
     └─ BankStatementAnalyzer: core parsing logic
@@ -105,66 +106,68 @@ Frontend dashboard
     └─ TransactionTable: searchable transaction list with payment methods
 ```
 
-### Backend Structure (Flask MVC — backend/)
+### Backend Structure (Flask MVC — backend/) ⚠️ Deprecated — removal Sprint-03
 
-| Layer | Location | Purpose |
-|-------|----------|---------|
-| Entry Point | run.py | Creates Flask app via create_app(), runs on port 5000 |
-| App Init | app/__init__.py | Bootstraps Flask app, registers CORS, loads blueprints |
-| Route | app/routes/routes.py | Single endpoint: POST /api/analyze/bank/statement |
-| Controller | app/controllers/analyzeController.py | Handles file upload, saves to uploads/, delegates to model |
-| Model | app/models/analyzeModel.py | Core business logic |
-| Config | app/config/config.py | Loads CORS_URLS from .env |
-| Constants | app/constants/constants.py | HTTP status code map |
+| Layer       | Location                             | Purpose                                                                                |
+| ----------- | ------------------------------------ | -------------------------------------------------------------------------------------- |
+| Entry Point | run.py                               | Creates Flask app via create_app(), runs on port 5000 (legacy — use port 8000 FastAPI) |
+| App Init    | app/**init**.py                      | Bootstraps Flask app, registers CORS, loads blueprints                                 |
+| Route       | app/routes/routes.py                 | Single endpoint: POST /api/analyze/bank/statement                                      |
+| Controller  | app/controllers/analyzeController.py | Handles file upload, saves to uploads/, delegates to model                             |
+| Model       | app/models/analyzeModel.py           | Core business logic                                                                    |
+| Config      | app/config/config.py                 | Loads CORS_URLS from .env                                                              |
+| Constants   | app/constants/constants.py           | HTTP status code map                                                                   |
 
 ### Backend Structure (FastAPI — backend-v2/)
 
-| Layer | Location | Purpose |
-|-------|----------|---------|
-| Entry Point | run.py | Starts uvicorn on port 8000 |
-| App Init | app/main.py | FastAPI app, CORS middleware, router registration |
-| Router | app/routers/health.py | GET /api/health |
-| Router | app/routers/analyze.py | POST /api/analyze/bank/statement (async, to_thread) |
-| Model | app/models/analyzer.py | BankStatementAnalyzer + TransactionPatternTrainer (copied from Flask, Flask imports stripped) |
-| Schemas | app/models/schemas.py | Pydantic v2 models: Transaction, AccountInfo, AnalysisResult, AnalyzeResponse |
-| Config | app/config/settings.py | pydantic-settings: cors_origins, max_upload_size_mb, debug |
+| Layer       | Location               | Purpose                                                                                       |
+| ----------- | ---------------------- | --------------------------------------------------------------------------------------------- |
+| Entry Point | run.py                 | Starts uvicorn on port 8000                                                                   |
+| App Init    | app/main.py            | FastAPI app, CORS middleware, router registration                                             |
+| Router      | app/routers/health.py  | GET /api/health                                                                               |
+| Router      | app/routers/analyze.py | POST /api/analyze/bank/statement (async, to_thread)                                           |
+| Model       | app/models/analyzer.py | BankStatementAnalyzer + TransactionPatternTrainer (copied from Flask, Flask imports stripped) |
+| Schemas     | app/models/schemas.py  | Pydantic v2 models: Transaction, AccountInfo, AnalysisResult, AnalyzeResponse                 |
+| Config      | app/config/settings.py | pydantic-settings: cors_origins, max_upload_size_mb, debug                                    |
 
 ### Core Classes in analyzeModel.py
 
 **Active:**
+
 - **AnalyzeModel**: Entry point; validates file path, instantiates BankStatementAnalyzer, returns JSON response
 - **BankStatementAnalyzer**: Main engine
-  - _process_excel_csv(): Detects header row, normalizes columns, extracts transactions
-  - _process_pdf_transactions(): Uses pdfplumber to extract tables from PDF pages
+  - \_process_excel_csv(): Detects header row, normalizes columns, extracts transactions
+  - \_process_pdf_transactions(): Uses pdfplumber to extract tables from PDF pages
   - detect_header_row(): Pattern-matching to identify header (looks for date, credit, debit, narration keywords)
   - find_column(): Fuzzy column matching (exact → partial match) against keyword lists
   - parse_amount(): Robust float parsing, handles currency symbols, Cr./Dr. markers, parentheses notation
   - normalize_date(): Converts multiple date formats to ISO YYYY-MM-DD
   - analyze_narration_details(): Regex-based extraction of UPI IDs, payment methods, RRN/UTR/TXN refs, banks, merchants, categories
   - calculate_confidence_score(): Scores each transaction (max 1.0) on date, amount, narration, type, receiver, balance
-  - _extract_metadata_from_text(): Regex patterns for account number, account holder, bank name, branch, IFSC, statement period
+  - \_extract_metadata_from_text(): Regex patterns for account number, account holder, bank name, branch, IFSC, statement period
 
 - **TransactionPatternTrainer**: Aggregates by merchant; computes count, avg/median amounts, std dev, first/last seen dates, common transaction days
 
 **Removed dead code (all deleted — Sprint 01):**
+
 - EnhancedNarrationAnalyzer, TransactionPatternLearner, BalanceValidator, EnhancedConfidenceScorer — incomplete stubs, never called
 - verify_bank_account_with_pennyless() — hardcoded identity data, API creds undefined, never called
 
 ### Frontend Structure (React + TypeScript)
 
-| File | Purpose |
-|------|---------|
-| App.tsx | Root component; manages analysis state, orchestrates layout |
-| types.ts | TypeScript interfaces: AccountInfo, Transaction, AnalysisResult, ApiResponse |
-| services/api.ts | uploadBankStatement(file) function; base URL from `VITE_API_URL` env var (falls back to http://localhost:5000) |
-| components/FileUpload.tsx | Drag-drop + click file input; loading state; error alerts |
-| components/AccountOverview.tsx | Bank details, account holder, confidence %, statement period |
-| components/AnalyticsCharts.tsx | Recharts: balance history (line), income vs. expense (bar), top merchants (pie) |
-| components/MerchantInsights.tsx | Merchant table with counts, amounts, frequency |
-| components/TransactionTable.tsx | Transaction list with date, narration, payment method, amount, balance, type |
-| components/ErrorBoundary.tsx | Per-section error boundary |
-| index.tsx | React 19 DOM entry |
-| vite.config.ts | Vite config; dev port 3000 |
+| File                            | Purpose                                                                                                                                                      |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| App.tsx                         | Root component; manages analysis state, orchestrates layout                                                                                                  |
+| types.ts                        | TypeScript interfaces: AccountInfo, Transaction, AnalysisResult, ApiResponse                                                                                 |
+| services/api.ts                 | uploadBankStatement(file) function; base URL from `VITE_API_URL` env var (`.env.local` sets http://localhost:8000; fallback http://localhost:5000 is legacy) |
+| components/FileUpload.tsx       | Drag-drop + click file input; loading state; error alerts                                                                                                    |
+| components/AccountOverview.tsx  | Bank details, account holder, confidence %, statement period                                                                                                 |
+| components/AnalyticsCharts.tsx  | Recharts: balance history (line), income vs. expense (bar), top merchants (pie)                                                                              |
+| components/MerchantInsights.tsx | Merchant table with counts, amounts, frequency                                                                                                               |
+| components/TransactionTable.tsx | Transaction list with date, narration, payment method, amount, balance, type                                                                                 |
+| components/ErrorBoundary.tsx    | Per-section error boundary                                                                                                                                   |
+| index.tsx                       | React 19 DOM entry                                                                                                                                           |
+| vite.config.ts                  | Vite config; dev port 3000                                                                                                                                   |
 
 No global state manager; all data flows top-down via props.
 
@@ -175,6 +178,7 @@ No global state manager; all data flows top-down via props.
 **Request:** multipart/form-data with file field (PDF, Excel .xlsx/.xls, or CSV)
 
 **Response (200 OK):**
+
 ```json
 {
   "success": 1,
@@ -234,11 +238,13 @@ No global state manager; all data flows top-down via props.
 ## Key Algorithm Details
 
 ### Column Detection (Header Row)
+
 1. Scan first 20 rows for keywords: date, narration, credit, debit, balance, amount, etc.
 2. Accept row with ≥2 keyword matches as header
 3. Fallback to row 0 if no match
 
 ### Amount Parsing
+
 - Remove currency symbols (₹, $, €, £)
 - Strip "Cr." / "Dr." suffixes
 - Handle parentheses: (100) → -100
@@ -246,12 +252,14 @@ No global state manager; all data flows top-down via props.
 - Return None if parsing fails
 
 ### Date Normalization
+
 - Detect: DD-MM-YYYY, DD/MM/YYYY, DD-Mon-YYYY, YYYY-MM-DD, etc.
 - Use dayfirst=True for ambiguous dates
 - Handle datetime strings with time component
 - Return ISO YYYY-MM-DD; fallback to original string if unparseable
 
 ### Narration Enrichment (Regex-Based)
+
 - **UPI**: UPI/{upi_id}/{remark}/{bank}/{txn_id} → extracts all components
 - **IMPS**: IMPS/{ref}/{receiver}/{bank} → payment method, receiver, bank peer
 - **VSI (Card)**: VSI/{merchant}/{datetime}/{txn_id} → merchant, payment method
@@ -261,7 +269,9 @@ No global state manager; all data flows top-down via props.
 - **Payment methods**: UPI, IMPS, NEFT, RTGS, BBPS, CARD, CASH, CHEQUE, ECS, SALARY, ATM, DIVIDEND, INTEREST, BILL PAY
 
 ### Confidence Score (Penalty-Based)
+
 Starts at 1.0; penalties applied:
+
 - Missing transaction_date: -0.25
 - Missing amount: -0.25
 - Missing/short narration: -0.15 / -0.05
@@ -271,7 +281,9 @@ Starts at 1.0; penalties applied:
 - Final: max(0.0, min(score, 1.0))
 
 ### Merchant Insights
+
 For each unique merchant (or receiver if merchant not found):
+
 - **Count**: Number of transactions
 - **Amounts**: avg, median, std dev
 - **Dates**: First/last occurrence
@@ -280,6 +292,7 @@ For each unique merchant (or receiver if merchant not found):
 ## Known Issues & Limitations
 
 **Fixed:**
+
 - ~~Broken Pennyless Integration~~ — deleted (TD-022, 2026-05-31)
 - ~~File cleanup~~ — `finally` block deletes uploaded file after every request (both backends)
 - ~~Hardcoded API URL~~ — frontend reads `VITE_API_URL` env var
@@ -304,12 +317,14 @@ For each unique merchant (or receiver if merchant not found):
 ## Common Development Tasks
 
 ### Adding a New Payment Method Detection
+
 1. Open backend/app/models/analyzeModel.py, find analyze_narration_details() (~line 877)
 2. Add keyword to payment_methods_keywords dict (~line 934) or add new regex pattern
 3. Test with sample narration
 4. Verify in TransactionTable UI
 
 ### Handling a New Document Format
+
 1. Modify extract_transactions() in BankStatementAnalyzer (~line 211)
 2. Add file extension check and route to appropriate processor
 3. Ensure column detection and amount parsing work
@@ -317,15 +332,17 @@ For each unique merchant (or receiver if merchant not found):
 5. Update README.md
 
 ### Customizing Merchant Categories
+
 1. Open backend/app/models/analyzeModel.py
 2. Find merchants_and_categories dict (~line 1034)
 3. Add/modify: "MERCHANT_NAME": {"merchant": "...", "category": "...", "payment_gateway": "..."}
 4. Rebuild frontend if needed
 
 ### Debugging Parsing Issues
+
 - Check uploads/ for uploaded file
 - Review confidence_score (low score indicates quality issues)
-- Trace analyze_narration_details() and _extract_metadata_from_text() for pattern mismatches
+- Trace analyze_narration_details() and \_extract_metadata_from_text() for pattern mismatches
 - Use print statements in analyzeModel.py (visible in Flask console)
 - For PDF: verify pdfplumber extraction with pdfplumber.open(file_path).pages[0].extract_tables()
 
@@ -351,10 +368,15 @@ There are currently no tests for the FastAPI backend or the React frontend.
 ### Manual / cURL
 
 ```bash
-curl -X POST http://localhost:5000/api/analyze/bank/statement \
+# FastAPI (active — port 8000)
+curl -X POST http://localhost:8000/api/analyze/bank/statement \
   -F "file=@/path/to/statement.xlsx"
 
-curl http://localhost:5000/api/health   # {"status": "ok", "service": "bank-statement-analyzer"}
+curl http://localhost:8000/api/health   # {"status": "ok", "service": "bank-statement-analyzer"}
+
+# Flask (deprecated — port 5000; removal Sprint-03)
+curl -X POST http://localhost:5000/api/analyze/bank/statement \
+  -F "file=@/path/to/statement.xlsx"
 ```
 
 ### Browser
@@ -367,6 +389,7 @@ curl http://localhost:5000/api/health   # {"status": "ok", "service": "bank-stat
 ## Environment Variables
 
 **.env (backend)**
+
 ```
 FLASK_APP=run.py
 FLASK_ENV=development
@@ -375,9 +398,12 @@ FLASK_DEBUG=True
 ```
 
 **.env.local (frontend)**
+
 ```
-VITE_API_URL=http://localhost:5000
+VITE_API_URL=http://localhost:8000
 ```
+
+(Sprint-02+: FastAPI on port 8000. Flask on port 5000 is deprecated — removal Sprint-03.)
 
 ## Technology Stack
 
@@ -407,10 +433,10 @@ This project uses a two-layer AI workflow. Read this carefully before making any
 
 ### Roles
 
-| Agent | Tool | Responsibility |
-|-------|------|----------------|
+| Agent             | Tool           | Responsibility                                          |
+| ----------------- | -------------- | ------------------------------------------------------- |
 | **Cowork Claude** | Cowork desktop | Planning, prompts, documentation, decisions, study docs |
-| **Claude Code** | CLI (`claude`) | Implementation only — writes and edits code |
+| **Claude Code**   | CLI (`claude`) | Implementation only — writes and edits code             |
 
 ### How Changes Are Made
 
@@ -450,14 +476,14 @@ Prompts from Cowork will follow this structure:
 
 Every change — no matter how small — must be accompanied by documentation:
 
-| Change type | Required doc update |
-|-------------|---------------------|
-| New feature | `docs/study/[feature-name].md` — how it works, why it was built, key code paths |
-| Bug fix | Add entry to `docs/changelog.md` with root cause and fix |
-| Architecture decision | New `docs/adr-XXX-[title].md` |
-| Requirement change | Update `docs/requirements.md` + entry in `docs/changelog.md` |
-| Sprint complete | `docs/study/sprint-[N]-learnings.md` — what was built, what was learned |
-| Dependency added | Update `docs/tech-debt.md` or `docs/architecture.md` |
+| Change type           | Required doc update                                                             |
+| --------------------- | ------------------------------------------------------------------------------- |
+| New feature           | `docs/study/[feature-name].md` — how it works, why it was built, key code paths |
+| Bug fix               | Add entry to `docs/changelog.md` with root cause and fix                        |
+| Architecture decision | New `docs/adr-XXX-[title].md`                                                   |
+| Requirement change    | Update `docs/requirements.md` + entry in `docs/changelog.md`                    |
+| Sprint complete       | `docs/study/sprint-[N]-learnings.md` — what was built, what was learned         |
+| Dependency added      | Update `docs/tech-debt.md` or `docs/architecture.md`                            |
 
 ### docs/ Folder Structure
 
@@ -496,6 +522,7 @@ Any change to requirements, architecture, or scope must be logged immediately in
 
 ```markdown
 ## [Date] — [Short title]
+
 **Type:** Requirement change | Architecture decision | Bug fix | Feature
 **Decision:** [What was decided]
 **Reason:** [Why]

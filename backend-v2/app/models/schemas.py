@@ -43,6 +43,7 @@ class Transaction(BaseModel):
     transaction_type: Optional[str] = None
     receiver_details: Optional[ReceiverDetails] = None
     account: Optional[str] = None
+    llm_enriched: bool = False
 
 
 class ConfidenceSummary(BaseModel):
@@ -80,3 +81,28 @@ class ErrorResponse(BaseModel):
     status_code: int
     message: str
     details: Optional[str] = None
+
+
+class CategoryBreakdown(BaseModel):
+    category: str
+    total: float
+    count: int
+    percentage: float
+
+
+class TopMerchant(BaseModel):
+    merchant: str
+    total: float
+    count: int
+
+
+class SummaryResponse(BaseModel):
+    total_income: float
+    total_expenses: float
+    net: float
+    currency: str = "INR"
+    date_range: Optional[StatementPeriod] = None
+    by_category: list[CategoryBreakdown]
+    top_merchants: list[TopMerchant]
+    transaction_count: int
+    avg_transaction_amount: float
