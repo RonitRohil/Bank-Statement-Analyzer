@@ -102,7 +102,13 @@ class SummaryResponse(BaseModel):
     net: float
     currency: str = "INR"
     date_range: Optional[StatementPeriod] = None
-    by_category: list[CategoryBreakdown]
+    by_category: list[CategoryBreakdown] = Field(
+        description=(
+            "Expense breakdown by category. A transaction with multiple categories "
+            "contributes its full amount to each, so percentages can sum to >100%. "
+            "Do not render as a naive 100%-pie chart."
+        )
+    )
     top_merchants: list[TopMerchant]
     transaction_count: int
     avg_transaction_amount: float

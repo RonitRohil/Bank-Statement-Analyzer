@@ -5,6 +5,18 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-20 — TD-036: Type summary endpoint input with Transaction schema
+
+**Type:** Bug fix (high)
+**Decision:** Replace `SummaryRequest.transactions: list[dict[str, Any]]` with `list[Transaction]`; use attribute access in the math loop; replace the `total_spend = 1` sentinel with an explicit empty-case guard; document the >100% category-percentage caveat.
+**Root cause:** The summary endpoint accepted raw dicts, so a client sending `amount: "oops"` would reach `abs(float(amount))` and return a 500. Pydantic v2 is already in the stack — the typed `Transaction` schema from `schemas.py` handles coercion and rejects bad input at the boundary with a 422.
+**Fix:** `summary.py`: import `Transaction`, change `SummaryRequest.transactions` type, replace all `.get()` calls with attribute access (`txn.amount`, `txn.transaction_type`, etc.), remove the magic sentinel (`total_expenses if total_expenses > 0 else 1`), replace with an `if total_expenses <= 0: by_category = []` guard. `schemas.py`: add `Field(description=...)` on `SummaryResponse.by_category` noting the >100% possibility.
+**Tests added:** `backend-v2/tests/test_summary.py` — 3 cases: 5-transaction math fixture (income, expenses, net, top merchants, date range), empty list (all zeros, `by_category == []`), bad amount returns 422.
+**Impact:** String amounts → 422 instead of 500. No change to output shape or math for valid inputs.
+**Files affected:** `backend-v2/app/routers/summary.py`, `backend-v2/app/models/schemas.py`, `backend-v2/tests/test_summary.py` (new)
+
+---
+
 ## 2026-06-20 — TD-037: Centralize API base URL; drop stale localhost:5000 strings
 
 **Type:** Bug fix (low)
