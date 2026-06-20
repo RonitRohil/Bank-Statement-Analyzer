@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
-import { AnalysisResult, ApiResponse } from './types';
-import { uploadBankStatement } from './services/api';
-import { FileUpload } from './components/FileUpload';
-import { AccountOverview } from './components/AccountOverview';
-import { TransactionTable } from './components/TransactionTable';
-import { MerchantInsights } from './components/MerchantInsights';
-import { AnalyticsCharts } from './components/AnalyticsCharts';
-import { ErrorBoundary } from './components/ErrorBoundary';
-import { LayoutDashboard, RefreshCw } from 'lucide-react';
+import React, { useState } from "react";
+import { AnalysisResult, ApiResponse } from "./types";
+import { uploadBankStatement, API_BASE } from "./services/api";
+import { FileUpload } from "./components/FileUpload";
+import { AccountOverview } from "./components/AccountOverview";
+import { TransactionTable } from "./components/TransactionTable";
+import { MerchantInsights } from "./components/MerchantInsights";
+import { AnalyticsCharts } from "./components/AnalyticsCharts";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { LayoutDashboard, RefreshCw } from "lucide-react";
 
 const App: React.FC = () => {
   const [data, setData] = useState<AnalysisResult | null>(null);
@@ -24,15 +24,22 @@ const App: React.FC = () => {
       } else {
         // Handle logic errors where HTTP might be 200 but success is 0
         const resAny = response as any;
-        setError(resAny.result?.error || response.message || 'Failed to analyze statement');
+        setError(
+          resAny.result?.error ||
+            response.message ||
+            "Failed to analyze statement",
+        );
       }
     } catch (err) {
-      let errorMessage = 'An unexpected error occurred.';
+      let errorMessage = "An unexpected error occurred.";
       if (err instanceof Error) {
         errorMessage = err.message;
         // Check for common network error messages (Chrome: 'Failed to fetch', others might vary)
-        if (errorMessage === 'Failed to fetch' || errorMessage.toLowerCase().includes('network')) {
-          errorMessage = 'Connection failed. Ensure backend is running at http://localhost:5000';
+        if (
+          errorMessage === "Failed to fetch" ||
+          errorMessage.toLowerCase().includes("network")
+        ) {
+          errorMessage = `Connection failed. Ensure backend is running at ${API_BASE}`;
         }
       }
       setError(errorMessage);
@@ -55,7 +62,9 @@ const App: React.FC = () => {
             <div className="bg-indigo-600 p-2 rounded-lg">
               <LayoutDashboard className="text-white w-5 h-5" />
             </div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">FinAnalyze</h1>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+              FinAnalyze
+            </h1>
           </div>
           {data && (
             <button
@@ -71,19 +80,22 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
         {/* Empty State / Upload */}
         {!data && (
           <div className="flex flex-col items-center justify-center min-h-[60vh]">
             <div className="text-center mb-8">
-              <h2 className="text-3xl font-bold text-slate-900 mb-4">Unlock Financial Insights</h2>
+              <h2 className="text-3xl font-bold text-slate-900 mb-4">
+                Unlock Financial Insights
+              </h2>
               <p className="text-slate-500 text-lg max-w-2xl mx-auto">
-                Upload your bank statement (PDF, Excel, CSV) to automatically categorize transactions, track spending habits, and visualize your cash flow.
+                Upload your bank statement (PDF, Excel, CSV) to automatically
+                categorize transactions, track spending habits, and visualize
+                your cash flow.
               </p>
             </div>
-            <FileUpload 
-              onFileSelect={handleFileSelect} 
-              isLoading={loading} 
+            <FileUpload
+              onFileSelect={handleFileSelect}
+              isLoading={loading}
               error={error}
               onDismissError={() => setError(null)}
             />
@@ -94,24 +106,32 @@ const App: React.FC = () => {
         {data && (
           <div className="animate-in fade-in duration-500">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-slate-800">Statement Analysis</h2>
+              <h2 className="text-2xl font-bold text-slate-800">
+                Statement Analysis
+              </h2>
               <span className="text-sm text-slate-500 bg-white px-3 py-1 rounded-full border border-slate-200 shadow-sm">
                 Generated: {new Date().toLocaleDateString()}
               </span>
             </div>
 
             <ErrorBoundary>
-              <AccountOverview info={data.account_info} confidence={data.confidence_summary} />
+              <AccountOverview
+                info={data.account_info}
+                confidence={data.confidence_summary}
+              />
             </ErrorBoundary>
-            
+
             <ErrorBoundary>
-              <AnalyticsCharts transactions={data.transactions} merchantInsights={data.merchant_insights} />
+              <AnalyticsCharts
+                transactions={data.transactions}
+                merchantInsights={data.merchant_insights}
+              />
             </ErrorBoundary>
-            
+
             <ErrorBoundary>
               <MerchantInsights insights={data.merchant_insights} />
             </ErrorBoundary>
-            
+
             <ErrorBoundary>
               <TransactionTable transactions={data.transactions} />
             </ErrorBoundary>

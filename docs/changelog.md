@@ -5,6 +5,17 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-20 — TD-037: Centralize API base URL; drop stale localhost:5000 strings
+
+**Type:** Bug fix (low)
+**Decision:** Export `API_BASE` from `api.ts` as the single source of truth for the backend URL; update fallback default from `:5000` to `:8000`; interpolate `API_BASE` into both network error messages instead of hardcoding a port.
+**Root cause:** BSA-09 (Sprint-02) cut the frontend over to FastAPI on port 8000 but left three stale `:5000` references: the env fallback in `api.ts`, the network-error throw in `api.ts`, and the catch-block message in `App.tsx`. Users whose backend is down were directed to the wrong, deprecated port.
+**Fix:** `api.ts`: `const` → `export const`, `'http://localhost:5000'` → `'http://localhost:8000'`, template-literal error string using `API_BASE`. `App.tsx`: imports `API_BASE`, uses it in the connection-failed message.
+**Impact:** Error messages always reflect the configured URL. No functional behaviour change.
+**Files affected:** `frontend/services/api.ts`, `frontend/App.tsx`
+
+---
+
 ## 2026-06-20 — TD-033, TD-034: Fix LLM enricher index bug; recompute aggregates after enrich
 
 **Type:** Bug fix (critical + high)
