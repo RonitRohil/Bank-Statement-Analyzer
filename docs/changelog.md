@@ -5,6 +5,19 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-20 — TD-033, TD-034: Fix LLM enricher index bug; recompute aggregates after enrich
+
+**Type:** Bug fix (critical + high)
+**Decision:** Fix double-indexing in `enrich_with_llm()` and recompute `merchant_insights` after enrichment runs.
+**Root cause (TD-033):** `llm_enricher.py` line 106 used `batch_indices[item["index"]]` to map model results back onto transactions. The prompt tells the model to echo the **global** transaction index back verbatim — so `item["index"]` was already the global index. Indexing into `batch_indices` a second time produced either an `IndexError` (masked by the catch-all `except`) or a write onto the completely wrong transaction. BSA-04 was shipping as a silent no-op since Sprint-02.
+**Fix (TD-033):** Changed `txn_index = batch_indices[item["index"]]` → `txn_index = item.get("index")`, with an explicit bounds check that logs a warning and skips rather than crashing. The catch-all `except` now only catches genuinely unexpected errors.
+**Fix (TD-034):** After `enrich_with_llm()` mutates the transactions list, `analyze.py` now calls `TransactionPatternTrainer().analyze(enriched)` and overwrites `result["result"]["merchant_insights"]`. `TransactionPatternTrainer` is already importable standalone with no constructor args — no restructuring needed.
+**Test added:** `backend-v2/tests/test_llm_enricher.py` — 4 cases: correct index lands on right row, out-of-range index skipped without crash, existing merchant not overwritten, Ollama down returns transactions unchanged.
+**Impact:** BSA-04 (LLM categorization) now actually works. LLM-filled merchants appear in `merchant_insights`.
+**Files affected:** `backend-v2/app/services/llm_enricher.py`, `backend-v2/app/routers/analyze.py`, `backend-v2/tests/test_llm_enricher.py` (new)
+
+---
+
 ## 2026-06-20 — Sprint-02 close-out: review, tech-debt, testing strategy, study, Sprint-03 plan
 
 **Type:** Documentation / review (Cowork session — no code changes)
@@ -26,6 +39,7 @@ Format: `[Date] — [Type] — [Short description]`
 **Type:** Bug fix (data loss)
 **Root cause:** `_process_pdf_transactions()` always treated `table[0]` as the header row when iterating over pdfplumber's per-page table list. When a bank statement table continues onto page 2+ without repeating its header row, the first data row was consumed as column names and silently dropped. All subsequent rows were then skipped because the "detected columns" no longer matched any known column names. Statements spanning 4 pages could return only the first page's transactions with no error.
 **Fix:** Added `_looks_like_header(row)` as a `@staticmethod` on `BankStatementAnalyzer`. It checks whether any cell in a row matches known header keywords (`date`, `narration`, `debit`, `credit`, `balance`, etc.). In `_process_pdf_transactions`, before the pdfplumber loop, `last_known_headers = None` is initialized. For each extracted table:
+
 - If `table[0]` looks like a header → use it normally, update `last_known_headers`
 - If not and a previous header is known → reuse it (continuation page), all rows become data rows
 - If not and no header seen yet → log a warning and skip
@@ -46,6 +60,7 @@ Logs `[PDF] Continuation table detected` at DEBUG for each continuation page.
 - `backend-v2/app/main.py`: imports and registers `summary.router`.
 
 **Design notes:**
+
 - Category totals are counted once per category per transaction (a multi-category transaction contributes full spend to each category). This means category percentages can sum to >100% — intentional; see prompt BSA-05 constraints.
 - Merchant breakdown covers expense (debit) transactions only; credits are excluded from category/merchant tallies.
 - `date_range` is derived from `transaction_date` strings via lexicographic sort (ISO YYYY-MM-DD format assumed from the analyze endpoint output).
@@ -70,11 +85,12 @@ Logs `[PDF] Continuation table detected` at DEBUG for each continuation page.
 - `backend-v2/app/services/__init__.py` (new): empty package init for the services module.
 
 **Constraints respected:**
+
 - LLM never called per-transaction; always batched (10/call).
 - Ollama not running → `ConnectError` caught, enrichment skipped, endpoint unaffected.
 - No new pip dependency — `httpx` already in requirements for test suite.
 
-**Files affected:** backend-v2/app/services/llm_enricher.py (new), backend-v2/app/services/__init__.py (new), backend-v2/app/routers/analyze.py, backend-v2/app/config/settings.py, backend-v2/app/models/schemas.py, backend-v2/.env.example
+**Files affected:** backend-v2/app/services/llm_enricher.py (new), backend-v2/app/services/**init**.py (new), backend-v2/app/routers/analyze.py, backend-v2/app/config/settings.py, backend-v2/app/models/schemas.py, backend-v2/.env.example
 
 ---
 

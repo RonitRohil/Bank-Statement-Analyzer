@@ -69,7 +69,9 @@ async def enrich_with_llm(transactions: list[dict[str, Any]]) -> list[dict[str, 
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         for batch_start in range(0, len(uncategorized_indices), BATCH_SIZE):
-            batch_indices = uncategorized_indices[batch_start : batch_start + BATCH_SIZE]
+            batch_indices = uncategorized_indices[
+                batch_start : batch_start + BATCH_SIZE
+            ]
             batch_input = [
                 {"index": i, "narration": transactions[i].get("narration", "") or ""}
                 for i in batch_indices
@@ -103,11 +105,21 @@ async def enrich_with_llm(transactions: list[dict[str, Any]]) -> list[dict[str, 
                 results = json.loads(raw)
 
                 for item in results:
-                    txn_index = batch_indices[item["index"]]
+                    txn_index = item.get("index")
+                    if not isinstance(txn_index, int) or not (
+                        0 <= txn_index < len(transactions)
+                    ):
+                        logger.warning(
+                            "[LLM] Out-of-range index %r in batch result — skipping",
+                            txn_index,
+                        )
+                        continue
                     if item.get("category"):
                         transactions[txn_index]["category"] = [item["category"]]
                         transactions[txn_index]["llm_enriched"] = True
-                    if item.get("merchant") and not transactions[txn_index].get("merchant"):
+                    if item.get("merchant") and not transactions[txn_index].get(
+                        "merchant"
+                    ):
                         transactions[txn_index]["merchant"] = item["merchant"]
 
             except httpx.ConnectError:
@@ -117,7 +129,9 @@ async def enrich_with_llm(transactions: list[dict[str, Any]]) -> list[dict[str, 
                 )
                 break  # no point retrying further batches if Ollama is down
             except httpx.HTTPStatusError as e:
-                logger.error("[LLM] Ollama HTTP error %s: %s", e.response.status_code, e)
+                logger.error(
+                    "[LLM] Ollama HTTP error %s: %s", e.response.status_code, e
+                )
             except json.JSONDecodeError as e:
                 logger.warning(
                     "[LLM] Failed to parse LLM response: %s — raw: %s", e, raw[:200]
