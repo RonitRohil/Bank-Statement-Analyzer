@@ -67,7 +67,9 @@ async def enrich_with_llm(transactions: list[dict[str, Any]]) -> list[dict[str, 
 
     url = f"{settings.ollama_base_url}/v1/chat/completions"
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(connect=5.0, read=120.0, write=10.0, pool=5.0)
+    ) as client:
         for batch_start in range(0, len(uncategorized_indices), BATCH_SIZE):
             batch_indices = uncategorized_indices[
                 batch_start : batch_start + BATCH_SIZE
@@ -128,6 +130,11 @@ async def enrich_with_llm(transactions: list[dict[str, Any]]) -> list[dict[str, 
                     settings.ollama_base_url,
                 )
                 break  # no point retrying further batches if Ollama is down
+            except httpx.TimeoutException:
+                logger.warning(
+                    "[LLM] Ollama timed out (model may still be loading) — skipping enrichment"
+                )
+                break
             except httpx.HTTPStatusError as e:
                 logger.error(
                     "[LLM] Ollama HTTP error %s: %s", e.response.status_code, e
