@@ -1,7 +1,18 @@
 # Changelog — Bank Statement Analyzer
 
-All notable changes to this project are documented here.  
+All notable changes to this project are documented here.
 Format: `[Date] — [Type] — [Short description]`
+
+---
+
+## 2026-06-20 — BSA-18: Decommission Flask backend; add CI
+
+**Type:** Architecture — cleanup + infrastructure
+**Decision:** Delete `backend/` (Flask app, tests, conftest, requirements). Delete `backend-v2/tests/test_parity.py`. Add `.github/workflows/test.yml`. Update CLAUDE.md, architecture.md, requirements.md to FastAPI-only.
+**Reason:** Flask's rollback window (one sprint after BSA-09 cutover) expired. Two copies of `BankStatementAnalyzer` guaranteed drift (TD-007). CI closes TD-001's "add a CI guard" watch item.
+**Impact:** `backend/` is gone — FastAPI (`backend-v2/`) is the canonical and only backend. GitHub Actions now runs pytest and guards `backend-v2/requirements.txt` encoding on every push/PR.
+**Files affected:** `backend/` (deleted), `backend-v2/tests/test_parity.py` (deleted), `backend-v2/pyproject.toml`, `.github/workflows/test.yml` (new), `CLAUDE.md`, `docs/architecture.md`, `docs/requirements.md`, `docs/tech-debt.md`
+**Tech debt closed:** TD-001 (CI guard for requirements.txt encoding)
 
 ---
 

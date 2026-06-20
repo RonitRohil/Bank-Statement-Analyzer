@@ -1,23 +1,16 @@
 # Architecture Report — Bank Statement Analyzer
 
-**Date:** 2026-05-29  
-**Reviewed by:** Claude (Cowork)  
-**Project:** Bank Statement Analyzer (Flask + React/TypeScript)
-
----
-
-## Backend Status (as of Sprint-02)
-
-| Backend                 | Port | Status                                                      |
-| ----------------------- | ---- | ----------------------------------------------------------- |
-| FastAPI (`backend-v2/`) | 8000 | Active — all new development here; frontend now points here |
-| Flask (`backend/`)      | 5000 | Deprecated — removal scheduled Sprint-03                    |
+**Date:** 2026-05-29 · **Updated:** 2026-06-20 (BSA-18: Flask decommissioned)
+**Reviewed by:** Claude (Cowork)
+**Project:** Bank Statement Analyzer (FastAPI + React/TypeScript)
 
 ---
 
 ## 1. Overview
 
-Bank Statement Analyzer is a full-stack web application for parsing and visualizing bank statements (PDF, Excel, CSV). The user uploads a file through the React frontend; the Flask backend extracts transactions, enriches them with metadata (payment method, merchant, category), and returns structured JSON. The frontend renders it as an interactive dashboard.
+Bank Statement Analyzer is a full-stack web application for parsing and visualizing bank statements (PDF, Excel, CSV). The user uploads a file through the React frontend; the FastAPI backend extracts transactions, enriches them with metadata (payment method, merchant, category), and returns structured JSON. The frontend renders it as an interactive dashboard.
+
+> **History:** A Flask backend (`backend/`) was the original v1 implementation. It was migrated to FastAPI (ADR-001, Sprint-02) and removed Sprint-03 (BSA-18, 2026-06-20). See `docs/study/flask-decommission-bsa18.md`.
 
 ---
 
@@ -37,13 +30,13 @@ Bank Statement Analyzer is a full-stack web application for parsing and visualiz
           │ HTTP POST multipart/form-data
           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                  FLASK BACKEND (port 5000)                  │
+│                  FASTAPI BACKEND (port 8000)                 │
 │                                                             │
-│  run.py → create_app() → Blueprint: /api                    │
+│  run.py → uvicorn → FastAPI app                             │
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │  POST /api/analyze/bank/statement                    │   │
 │  │                                                      │   │
-│  │  AnalyzeController                                   │   │
+│  │  analyze.py (router)                                 │   │
 │  │    └→ saves file to uploads/                         │   │
 │  │    └→ AnalyzeModel.bank_statement_analysis()         │   │
 │  │         └→ BankStatementAnalyzer                     │   │
@@ -51,16 +44,11 @@ Bank Statement Analyzer is a full-stack web application for parsing and visualiz
 │  │              └→ _process_pdf_transactions()  (PDF)   │   │
 │  │                   └→ TransactionPatternTrainer        │   │
 │  │                        └→ merchant_insights{}         │   │
+│  │    └→ enrich_with_llm() (Ollama, BSA-04)             │   │
+│  │    └→ recompute merchant_insights (post-enrich)      │   │
 │  └──────────────────────────────────────────────────────┘   │
 │                                                             │
-│  uploads/  ← files saved here (never cleaned up)           │
-└─────────────────────────────────────────────────────────────┘
-          │ Optional (configured via env vars — currently broken)
-          ▼
-┌─────────────────────────────────────────────────────────────┐
-│  External: Pennyless API (bank account verification)        │
-│  Config.INTEGRATION_URL + Config.INTEGRATION_AUTH           │
-│  (These env vars are NOT defined in Config class — bug)     │
+│  uploads/  ← files saved here, deleted after response      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -70,35 +58,35 @@ Bank Statement Analyzer is a full-stack web application for parsing and visualiz
 
 ### Pattern
 
-Model-View-Controller (MVC) implemented via Flask Blueprints.
+Router → Service → Model (FastAPI, no MVC class hierarchy; routers delegate directly to models/services).
 
-| Layer      | File                                   | Responsibility                                   |
-| ---------- | -------------------------------------- | ------------------------------------------------ |
-| Route      | `app/routes/routes.py`                 | URL binding → controller method                  |
-| Controller | `app/controllers/analyzeController.py` | Request parsing, file save, response shaping     |
-| Model      | `app/models/analyzeModel.py`           | All business logic: parsing, enrichment, scoring |
-| Config     | `app/config/config.py`                 | Environment variable loading                     |
-| Constants  | `app/constants/constants.py`           | HTTP status code map                             |
+| Layer   | File                           | Responsibility                                                   |
+| ------- | ------------------------------ | ---------------------------------------------------------------- |
+| Router  | `app/routers/health.py`        | `GET /api/health`                                                |
+| Router  | `app/routers/analyze.py`       | `POST /api/analyze/bank/statement` — orchestrates parse + enrich |
+| Router  | `app/routers/summary.py`       | `POST /api/analyze/bank/summary` — pure-math summary (BSA-05)    |
+| Service | `app/services/llm_enricher.py` | `enrich_with_llm()` — Ollama category fallback (BSA-04)          |
+| Model   | `app/models/analyzer.py`       | `BankStatementAnalyzer` + `TransactionPatternTrainer`            |
+| Schemas | `app/models/schemas.py`        | Pydantic v2 models; all request/response types                   |
+| Config  | `app/config/settings.py`       | pydantic-settings env loading                                    |
 
-### Classes in `analyzeModel.py`
+### Classes in `analyzer.py`
 
-| Class                       | Status       | Role                                                                                |
-| --------------------------- | ------------ | ----------------------------------------------------------------------------------- |
-| `AnalyzeModel`              | ✅ Used      | Entry point — delegates to `BankStatementAnalyzer`                                  |
-| `BankStatementAnalyzer`     | ✅ Used      | Core: file parsing, column detection, narration enrichment, date normalization      |
-| `TransactionPatternTrainer` | ✅ Used      | Merchant aggregation / insight generation                                           |
-| `EnhancedNarrationAnalyzer` | ❌ Dead code | NLP-based entity extraction — incomplete, references `self.nlp` which doesn't exist |
-| `TransactionPatternLearner` | ❌ Dead code | Pattern learning skeleton — never instantiated                                      |
-| `BalanceValidator`          | ❌ Dead code | Running balance validation — never instantiated                                     |
-| `EnhancedConfidenceScorer`  | ❌ Dead code | Multi-signal confidence scoring — never instantiated                                |
+| Class                       | Status  | Role                                                                           |
+| --------------------------- | ------- | ------------------------------------------------------------------------------ |
+| `AnalyzeModel`              | ✅ Used | Entry point — delegates to `BankStatementAnalyzer`                             |
+| `BankStatementAnalyzer`     | ✅ Used | Core: file parsing, column detection, narration enrichment, date normalization |
+| `TransactionPatternTrainer` | ✅ Used | Merchant aggregation / insight generation                                      |
+
+(Dead classes — `EnhancedNarrationAnalyzer`, `TransactionPatternLearner`, `BalanceValidator`, `EnhancedConfidenceScorer` — removed Sprint-01.)
 
 ### Dependencies (Backend)
 
-- **Flask 3.1.2** — web framework
+- **FastAPI 0.115 + uvicorn** — async web framework
 - **pdfplumber** — PDF table extraction
 - **pandas** — DataFrame manipulation
-- **scikit-learn** — imported (`TfidfVectorizer`, `RandomForestClassifier`, `MultiLabelBinarizer`) but **not actually used** in any active code path
-- **requests** — HTTP client for Pennyless API
+- **pydantic 2.11 + pydantic-settings** — schema validation, env config
+- **python-multipart** — file upload parsing
 - **python-dotenv** — env loading
 
 ---
@@ -111,7 +99,7 @@ Model-View-Controller (MVC) implemented via Flask Blueprints.
 - **Vite 6** as build tool (dev port 3000)
 - **Recharts** for data visualization
 - **Lucide React** for icons
-- **Tailwind CSS** (CDN-based, inferred from class names in components)
+- **Tailwind CSS** (CDN-based)
 
 ### Component Tree
 
@@ -128,24 +116,13 @@ App.tsx
 ### Data Flow
 
 1. User drops/selects file → `FileUpload` calls `uploadBankStatement(file)`
-2. `services/api.ts` sends `multipart/form-data` POST to `${VITE_API_URL}/api/analyze/bank/statement` (FastAPI, port 8000 since BSA-09)
+2. `services/api.ts` sends `multipart/form-data` POST to `${API_BASE}/api/analyze/bank/statement` (port 8000)
 3. On success, `AnalysisResult` stored in `App` state
-4. All child components receive data as props (no global state manager — correct for this scale)
+4. All child components receive data as props (no global state manager)
 
 ### API Coupling
 
-The API base URL is read from `VITE_API_URL` (`.env.local`), defaulting to FastAPI on port 8000. **Open issue (TD-037):** two error-message strings and the env fallback in `services/api.ts` / `App.tsx` still reference the deprecated `localhost:5000` — cosmetic but misleading post-cutover.
-
-### FastAPI Routers & Services (`backend-v2/app/`)
-
-| Layer | File | Purpose |
-|-------|------|---------|
-| Router | `routers/health.py` | `GET /api/health` |
-| Router | `routers/analyze.py` | `POST /api/analyze/bank/statement` (async, `to_thread`; calls LLM enricher) |
-| Router | `routers/summary.py` | `POST /api/analyze/bank/summary` (sync; pure math over a transactions array) — BSA-05 |
-| Service | `services/llm_enricher.py` | `enrich_with_llm()` — Ollama categorization fallback for `category=[]` rows — BSA-04 |
-| Model | `models/analyzer.py` | `BankStatementAnalyzer` + `TransactionPatternTrainer` (canonical copy once Flask is deleted, BSA-18) |
-| Schemas | `models/schemas.py` | Pydantic v2 models incl. `SummaryResponse`, `llm_enriched` flag |
+The API base URL is read from `VITE_API_URL` (`.env.local`), defaulting to FastAPI on port 8000. Exported as `API_BASE` from `services/api.ts` — single source of truth; interpolated into error messages (fixed TD-037, Sprint-03).
 
 ---
 
@@ -177,7 +154,8 @@ The API base URL is read from `VITE_API_URL` (`.env.local`), defaulting to FastA
         "category": ["E-COMMERCE"],
         "remarks": ["TRANSFER"],
         "payment_gateway": null,
-        "confidence_score": 0.85
+        "confidence_score": 0.85,
+        "llm_enriched": false
       }
     ],
     "confidence_summary": { "overall_score", "total_transactions", "high_confidence_txns" },
@@ -192,36 +170,37 @@ The API base URL is read from `VITE_API_URL` (`.env.local`), defaulting to FastA
 
 ## 6. Infrastructure & Deployment
 
-| Concern            | Current State                                        |
-| ------------------ | ---------------------------------------------------- |
-| Containerization   | None — no Dockerfile or docker-compose               |
-| Environment config | `.env` file required but no `.env.example` provided  |
-| Process management | `python run.py` with `debug=True` — dev only         |
-| File storage       | Local `uploads/` directory — ephemeral, never purged |
-| Database           | None — fully stateless                               |
-| Authentication     | None on API endpoints                                |
-| HTTPS              | Not configured                                       |
-| CORS               | Defaults to `*` wildcard if `CORS_URLS` env not set  |
+| Concern            | Current State                                                   |
+| ------------------ | --------------------------------------------------------------- |
+| Containerization   | None — no Dockerfile or docker-compose                          |
+| Environment config | `.env.local` (frontend); pydantic-settings (backend)            |
+| Process management | `uvicorn app.main:app --reload` — dev only                      |
+| File storage       | Local `uploads/` directory — deleted post-response              |
+| Database           | None — fully stateless                                          |
+| Authentication     | None on API endpoints                                           |
+| HTTPS              | Not configured                                                  |
+| CORS               | Locked to `cors_origins` setting (default localhost)            |
+| CI                 | `.github/workflows/test.yml` — pytest + encoding guard (BSA-18) |
 
 ---
 
 ## 7. Strengths
 
-- Clean MVC separation in backend
-- Good TypeScript typing on frontend (`types.ts` is comprehensive)
+- Async FastAPI with `asyncio.to_thread()` — file parsing doesn't block the event loop
+- Pydantic v2 schemas — all I/O validated at the boundary; bad inputs return 422, not 500
 - ErrorBoundary per dashboard section prevents full-page crashes
 - Narration enrichment logic is thorough for Indian banking formats (UPI, IMPS, NEFT, RTGS)
 - Confidence scoring gives downstream consumers a quality signal
+- LLM enrichment is non-blocking: Ollama down → 200 with unchanged transactions
 
 ---
 
 ## 8. Architectural Risks
 
-1. **Single synchronous endpoint** — large PDFs block the Flask worker thread. No async processing or job queue.
-2. **No file cleanup** — `uploads/` grows unbounded; a busy server will fill disk.
-3. **Broken Pennyless integration** — `Config.INTEGRATION_URL` and `Config.INTEGRATION_AUTH` are never defined; calling the verification path raises `AttributeError`.
-4. **Dead code sprawl** — four incomplete classes inflate `analyzeModel.py` to 900+ lines and suggest unfinished roadmap items that were never removed.
-5. **No authentication** — the API is fully open; anyone who can reach port 5000 can analyze files.
+1. **Single-process enrichment** — LLM enrichment runs inline inside the request; 200 uncategorized rows → minutes (TD-035).
+2. **Monolithic model file** — `analyzer.py` is 1,280 lines; column detection is duplicated between PDF and CSV paths (TD-007/TD-008).
+3. **No authentication** — the API is fully open (no auth planned until user accounts are in scope).
+4. **No PDF OCR** — scanned (image-based) PDFs fail silently; pdfplumber only handles digital/table PDFs.
 
 ---
 
