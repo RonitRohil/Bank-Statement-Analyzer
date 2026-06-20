@@ -10,14 +10,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Frontend**: React 19 + TypeScript + Vite, data visualization with Recharts
 - **Key Features**: Multi-format document parsing, narration analysis (UPI, IMPS, NEFT, card payments), merchant insights, confidence scoring, account metadata extraction, **LLM categorization fallback (BSA-04)**, **financial summary endpoint (BSA-05)**
 
-> **History:** Flask backend (`backend/`) was removed Sprint-03 (BSA-18, 2026-06-20). FastAPI (`backend-v2/`) is the canonical backend. See `docs/study/flask-decommission-bsa18.md`.
+> **History:** Flask backend was removed Sprint-03 (BSA-18, 2026-06-20). FastAPI (`backend/`, formerly `backend-v2/`) is the canonical and only backend. See `docs/study/flask-decommission-bsa18.md`.
+> **Rename note (TD-041):** Directory is still `backend-v2/` on disk. Run `rmdir backend && git mv backend-v2 backend` locally to complete. All docs already reference `backend/`.
 
 ## Development Setup
 
 ### Backend (FastAPI)
 
 ```bash
-cd backend-v2
+cd backend
 
 # Create virtual environment (Windows)
 python -m venv venv
@@ -271,24 +272,31 @@ For each unique merchant (or receiver if merchant not found):
 - ~~LLM enricher index bug~~ — double-index fixed; aggregates recomputed post-enrich (TD-033/TD-034, 2026-06-20)
 - ~~Summary endpoint untyped input~~ — retyped with `Transaction` schema (TD-036, 2026-06-20)
 - ~~Stale frontend URL strings~~ — `API_BASE` centralized; fallback updated to port 8000 (TD-037, 2026-06-20)
+- ~~Enrichment unbounded/blocking~~ — `Semaphore(3)` + `wait_for` + row cap; partial results on timeout (TD-035, 2026-06-20)
+- ~~BSA-04/05 invisible~~ — Spending Summary card wired; InsightsStrip renders callouts (BSA-12/BSA-15, 2026-06-20)
+- ~~Two divergent category taxonomies~~ — `CANONICAL_CATEGORIES` + `REGEX_TO_CANONICAL` unify regex + LLM paths (CR-S2-08, 2026-06-20)
 
 **Open:**
 
-1. **Enrichment unbounded/blocking (TD-035)**: sequential 60s batches awaited inline; no global deadline. 200 uncategorized rows → minutes.
+1. **AI badge on enriched rows (TD-038 partial)**: `llm_enriched` is in `types.ts` but `TransactionTable.tsx` doesn't render it. Sprint-04 P0.
 
-2. **BSA-04/05 have no UI (TD-038)**: `llm_enriched` isn't in `types.ts`; nothing renders the summary endpoint. Both features ship invisible.
+2. **`insights` missing from Pydantic schema (TD-039)**: `AnalysisResult` in `schemas.py` lacks `insights: list[str]`. Sprint-04 first commit.
 
-3. **No Authentication**: Endpoint is fully public. No auth layer planned until user accounts are in scope.
+3. **`backend-v2/` rename pending (TD-041)**: Run `rmdir backend && git mv backend-v2 backend` locally. Sprint-04 first commit.
 
-4. **PDF Limitations**: Scanned (image-based) PDFs fail silently; only works with digital/table-based PDFs. Needs OCR (Tesseract or Azure) to fix.
+4. **No persistence (BSA-19)**: Every upload re-parses from scratch; no history store. Sprint-04 P0.
 
-5. **No Balance Validation**: Running balance not validated against credit/debit deltas; inconsistent data passes through undetected.
+5. **No Authentication**: Endpoint is fully public. No auth layer planned until user accounts are in scope.
+
+6. **PDF Limitations**: Scanned (image-based) PDFs fail silently; only works with digital/table-based PDFs. Needs OCR (Tesseract or Azure) to fix.
+
+7. **No Balance Validation**: Running balance not validated against credit/debit deltas; inconsistent data passes through undetected.
 
 ## Common Development Tasks
 
 ### Adding a New Payment Method Detection
 
-1. Open `backend-v2/app/models/analyzer.py`, find `analyze_narration_details()` (~line 877)
+1. Open `backend/app/models/analyzer.py`, find `analyze_narration_details()` (~line 877)
 2. Add keyword to `payment_methods_keywords` dict (~line 934) or add new regex pattern
 3. Test with sample narration
 4. Verify in TransactionTable UI
@@ -303,7 +311,7 @@ For each unique merchant (or receiver if merchant not found):
 
 ### Customizing Merchant Categories
 
-1. Open `backend-v2/app/models/analyzer.py`
+1. Open `backend/app/models/analyzer.py`
 2. Find `merchants_and_categories` dict (~line 1034)
 3. Add/modify: `"MERCHANT_NAME": {"merchant": "...", "category": "...", "payment_gateway": "..."}`
 4. Rebuild frontend if needed

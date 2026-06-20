@@ -5,6 +5,65 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-20 — Sprint-03 close-out: study doc, code review, tech-debt update, Sprint-04 plan
+
+**Type:** Documentation / review (Cowork session — no code changes)  
+**Decision:** Reviewed everything Sprint-03 shipped and produced the full close-out documentation set.  
+**What was reviewed:** TD-033/034/035/036/037 fast-follows; CR-S2-08 category taxonomy; BSA-18 Flask deletion + CI; BSA-12 spending summary card; BSA-15 insights strip; ADR-002 persistence design.  
+**New debt items logged from review:**
+
+- **TD-039 (🟡):** `insights: list[str]` missing from `AnalysisResult` in `schemas.py` — schema drift, fix in first Sprint-04 commit.
+- **TD-040 (🟢):** `SummaryResponse` missing `currency` field — frontend reads `summary.currency ?? "INR"` but backend doesn't emit it.
+- **TD-041 (🟢):** Empty `backend/` directory created during sandbox rename attempt — user must run `rmdir backend && git mv backend-v2 backend` on local machine.
+- **CR-S3-01 (🟡):** CV threshold in `insights.py` may be too tight (0.15) for some real-world recurring merchants — raise to 0.25.
+- **CR-S3-04 (🟢):** AI badge on enriched rows still missing from `TransactionTable.tsx` (TD-038 partially open).
+
+**Also:** `docs/study/sprint-03-learnings.md` written; `docs/code-review.md` updated to Sprint-03 review; `docs/tech-debt.md` updated (TD-035 closed, TD-038 partially resolved, TD-039/040/041 opened, Sprint-04 action plan updated); `docs/sprint-04-plan.md` written; `.github/workflows/test.yml` job renamed from `backend-v2` to `backend`.  
+**Files affected (docs + CI only):** `docs/study/sprint-03-learnings.md` (new), `docs/code-review.md`, `docs/tech-debt.md`, `docs/sprint-04-plan.md` (new), `.github/workflows/test.yml`
+
+---
+
+## 2026-06-20 — BSA-15: Smart Insights strip; BSA-12: Spending Summary card; CR-S2-08: Category taxonomy
+
+**Type:** Feature (Sprint-03 P1)  
+**BSA-15 — Smart Insights strip:**
+
+- `backend/app/services/insights.py` (new): `generate_insights()` pure function. Derives up to 5 plain-language callouts: top spending category + share, most frequent merchant, large transaction count (>₹10,000), net cash flow direction, likely-recurring teaser (merchant with ≥3 hits and CV < 0.15).
+- `backend/app/routers/analyze.py`: calls `generate_insights()` post-enrichment; adds `insights: list[str]` to the response.
+- `backend/tests/test_insights.py` (new): unit tests for insights generation.
+- `frontend/components/InsightsStrip.tsx` (new): pill-style strip rendering insight strings with a lightbulb icon.
+- `frontend/types.ts`: added `insights: string[]` to `AnalysisResult`.
+- `frontend/App.tsx`: imports and renders `InsightsStrip` below the `AccountOverview`.
+
+**BSA-12 — Spending Summary card (TD-038 partial):**
+
+- `frontend/components/SpendingSummary.tsx` (new): fetches `POST /api/analyze/bank/summary` on mount, renders income/expense/net tiles, top-5 categories with percentages, top-5 merchants.
+- `frontend/services/api.ts`: added `getSummary(transactions)` function; added `SummaryResponse`, `CategoryBreakdown`, `TopMerchant` types.
+- `frontend/types.ts`: added full `SummaryResponse` interface; added `llm_enriched?: boolean` to `Transaction`.
+- `frontend/App.tsx`: imports and renders `SpendingSummary` above charts.
+
+**CR-S2-08 — Category taxonomy unification:**
+
+- `backend/app/services/categories.py` (new): `CANONICAL_CATEGORIES` (16 human-readable labels) + `REGEX_TO_CANONICAL` dict (maps `FOOD_DELIVERY` → `Food & Dining`, `E-COMMERCE` → `Shopping`, etc.).
+- `backend/app/models/analyzer.py`: applies `REGEX_TO_CANONICAL` after regex categorization to normalize output to canonical labels.
+- `backend/app/services/llm_enricher.py`: embeds `CANONICAL_CATEGORIES` in the system prompt — constrains LLM output to the same 16 labels.
+- **Impact:** Regex and LLM category outputs now use identical labels. Downstream grouping (summary card, insights) is consistent.
+
+**Files affected:** `backend/app/services/categories.py` (new), `backend/app/services/insights.py` (new), `backend/app/routers/analyze.py`, `backend/app/models/analyzer.py`, `backend/app/services/llm_enricher.py`, `backend/tests/test_insights.py` (new), `frontend/components/InsightsStrip.tsx` (new), `frontend/components/SpendingSummary.tsx` (new), `frontend/services/api.ts`, `frontend/types.ts`, `frontend/App.tsx`
+
+---
+
+## 2026-06-20 — TD-035: Bound LLM enrichment (Semaphore + asyncio.wait_for + row cap)
+
+**Type:** Bug fix / performance (high)  
+**Decision:** Replace sequential blocking batch loop with concurrent bounded batches.  
+**Root cause:** `enrich_with_llm()` ran batches sequentially, each with a 60 s timeout, awaited inline with no global deadline. 200 uncategorized rows → 20 batches × 60 s = up to a 20-minute request with no early exit.  
+**Fix:** Refactored to gather all batch coroutines and run them with `asyncio.Semaphore(3)` (up to 3 concurrent batches) wrapped in `asyncio.wait_for(..., timeout=settings.llm_total_timeout_s)`. Added `settings.llm_max_enriched` cap limiting which uncategorized indices are submitted. Partial results returned on timeout — the endpoint always responds. `ConnectError` and `TimeoutException` still short-circuit their individual batch gracefully.  
+**Impact:** Enrichment latency is now bounded by wall-clock budget regardless of statement size. Concurrent batches roughly 3× faster than sequential for large statements.  
+**Files affected:** `backend/app/services/llm_enricher.py`, `backend/app/config/settings.py`
+
+---
+
 ## 2026-06-20 — ADR-002: Persistence layer decision — SQLite via SQLModel
 
 **Type:** Architecture decision
