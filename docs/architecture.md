@@ -176,7 +176,7 @@ The API base URL is read from `VITE_API_URL` (`.env.local`), defaulting to FastA
 | Environment config | `.env.local` (frontend); pydantic-settings (backend)            |
 | Process management | `uvicorn app.main:app --reload` — dev only                      |
 | File storage       | Local `uploads/` directory — deleted post-response              |
-| Database           | None — fully stateless                                          |
+| Database           | None — fully stateless (SQLite planned Sprint-04, see ADR-002)  |
 | Authentication     | None on API endpoints                                           |
 | HTTPS              | Not configured                                                  |
 | CORS               | Locked to `cors_origins` setting (default localhost)            |
@@ -204,4 +204,4 @@ The API base URL is read from `VITE_API_URL` (`.env.local`), defaulting to FastA
 
 ---
 
-_Next: See `system-design.md` for service-level design recommendations and `tech-debt.md` for a prioritized remediation list._
+_Next: See `system-design.md` for service-level design recommendations, `tech-debt.md` for a prioritized remediation list, and `adr-002-persistence.md` for the persistence layer decision and data model._

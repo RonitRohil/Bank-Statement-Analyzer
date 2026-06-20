@@ -5,6 +5,16 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-20 — ADR-002: Persistence layer decision — SQLite via SQLModel
+
+**Type:** Architecture decision
+**Decision:** Adopt SQLite via SQLModel as the persistence layer. Data model designed: three tables — `statements` (one row per uploaded file, keyed by `file_hash` for dedup), `transactions` (FK to `statements`, full enriched transaction data), `corrections` (fingerprint-keyed user corrections for BSA-16 learning loop). Migration path to Postgres documented but deferred until multi-user is a real requirement.
+**Reason:** Every high-value longitudinal feature (BSA-06/07/16/17, TD-024) is gated on a persistence store. SQLite is zero-infra, one file, and SQLModel reuses the Pydantic models already in the codebase. PostgreSQL adds operational overhead with no current payoff for a single-user project. File-based JSON cannot support relational queries.
+**Impact:** Unlocks BSA-06, BSA-07, BSA-16, BSA-17, TD-024. The `analyze` endpoint gains an optional stateful path (storage is additive — stateless path still works). Implementation is BSA-19 (Sprint-04 P0). Open questions deferred to BSA-19: encryption-at-rest, data-retention policy, Alembic migration init.
+**Files affected:** `docs/adr-002-persistence.md` (new), `docs/architecture.md` (DB row updated + footer link), `docs/sprint-03-plan.md` (ADR-002 marked done; BSA-19 marked Sprint-04 P0)
+
+---
+
 ## 2026-06-20 — BSA-18: Decommission Flask backend; add CI
 
 **Type:** Architecture — cleanup + infrastructure
