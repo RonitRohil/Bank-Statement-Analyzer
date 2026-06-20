@@ -57,6 +57,7 @@ export interface Transaction {
 export interface AnalysisResult {
   account_info: AccountInfo;
   confidence_summary: ConfidenceSummary;
+  insights: string[];
   merchant_insights: Record<string, MerchantInsight>;
   transactions: Transaction[];
 }

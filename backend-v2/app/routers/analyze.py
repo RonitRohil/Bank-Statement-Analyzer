@@ -8,6 +8,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from app.config.settings import settings
 from app.models.analyzer import BankStatementAnalyzer, TransactionPatternTrainer
 from app.models.schemas import AnalyzeResponse
+from app.services.insights import generate_insights
 from app.services.llm_enricher import enrich_with_llm
 
 router = APIRouter()
@@ -55,6 +56,9 @@ async def analyze_statement(file: UploadFile = File(...)):
             result["result"]["transactions"] = enriched
             result["result"]["merchant_insights"] = TransactionPatternTrainer().analyze(
                 enriched
+            )
+            result["result"]["insights"] = generate_insights(
+                enriched, result["result"]["merchant_insights"]
             )
 
         return result

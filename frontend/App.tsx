@@ -7,6 +7,7 @@ import { TransactionTable } from "./components/TransactionTable";
 import { MerchantInsights } from "./components/MerchantInsights";
 import { AnalyticsCharts } from "./components/AnalyticsCharts";
 import { SpendingSummary } from "./components/SpendingSummary";
+import { InsightsStrip } from "./components/InsightsStrip";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { LayoutDashboard, RefreshCw } from "lucide-react";
 
@@ -120,6 +121,10 @@ const App: React.FC = () => {
                 info={data.account_info}
                 confidence={data.confidence_summary}
               />
+            </ErrorBoundary>
+
+            <ErrorBoundary>
+              <InsightsStrip insights={data.insights ?? []} />
             </ErrorBoundary>
 
             <ErrorBoundary>

@@ -67,6 +67,7 @@ class AnalysisResult(BaseModel):
     transactions: List[Transaction]
     confidence_summary: ConfidenceSummary
     merchant_insights: Dict[str, Any]
+    insights: List[str] = []
 
 
 class AnalyzeResponse(BaseModel):
