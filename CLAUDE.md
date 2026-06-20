@@ -1,4 +1,4 @@
-﻿# CLAUDE.md
+# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -6,21 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Bank Statement Analyzer** is a full-stack application for parsing and analyzing bank statements (PDF, Excel, CSV). Users upload files through a React frontend; the backend extracts and enriches transactions with metadata (payment method, merchant, category, confidence scores), and returns structured JSON for visualization in an interactive dashboard.
 
-- **Backend (v1 — deprecated)**: Flask 3.1.2 on port 5000 — scheduled for removal Sprint-03 (BSA-18)
-- **Backend (v2 — active)**: FastAPI 0.115 on port 8000 — async, Pydantic v2, Swagger UI; all endpoints ported; frontend points here
+- **Backend**: FastAPI 0.115 on port 8000 — async, Pydantic v2, Swagger UI; all endpoints live here
 - **Frontend**: React 19 + TypeScript + Vite, data visualization with Recharts
 - **Key Features**: Multi-format document parsing, narration analysis (UPI, IMPS, NEFT, card payments), merchant insights, confidence scoring, account metadata extraction, **LLM categorization fallback (BSA-04)**, **financial summary endpoint (BSA-05)**
 
-**Migration status (post-Sprint-02, 2026-06-20):** Frontend points to FastAPI (port 8000). Flask (port 5000) kept one sprint as rollback; deletion is Sprint-03 (BSA-18). Sprint-02 shipped BSA-04 (LLM categorization via Ollama), BSA-05 (summary endpoint), BSA-10 (FastAPI tests), and TD-021 (multi-page PDF fix).
-
-> ⚠️ **Two Sprint-02 features shipped with known fast-follow defects — read before touching them.** **TD-033 (🔴):** `backend-v2/app/services/llm_enricher.py` double-indexes results onto the wrong transaction (`batch_indices[item["index"]]` where `item["index"]` is already the global index), masked by a catch-all `except`, so BSA-04 silently no-ops. **TD-037 (🟠):** stale `localhost:5000` strings remain in `frontend/App.tsx` + `services/api.ts` after the port-8000 cutover. Plus TD-034/035/036/038. Fixes are sequenced in `docs/prompts/sprint-03/`. See `docs/code-review.md` and `docs/tech-debt.md`.
+> **History:** Flask backend (`backend/`) was removed Sprint-03 (BSA-18, 2026-06-20). FastAPI (`backend-v2/`) is the canonical backend. See `docs/study/flask-decommission-bsa18.md`.
 
 ## Development Setup
 
-### Backend (Flask)
+### Backend (FastAPI)
 
 ```bash
-cd backend
+cd backend-v2
 
 # Create virtual environment (Windows)
 python -m venv venv
@@ -29,27 +26,6 @@ venv\Scripts\activate
 # Create virtual environment (macOS/Linux)
 python -m venv venv
 source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Create .env file in /backend (example in README.md)
-# Requires: FLASK_APP=run.py, FLASK_ENV=development, CORS_URLS=["http://localhost:3000"]
-
-# Run development server (port 5000)
-python run.py
-# or
-flask run
-```
-
-### Backend (FastAPI — backend-v2)
-
-```bash
-cd backend-v2
-
-# Create virtual environment (Windows)
-python -m venv venv
-venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
@@ -69,8 +45,7 @@ cd frontend
 npm install
 
 # Create .env.local (example in .env.example)
-# Requires: VITE_API_URL=http://localhost:8000  (FastAPI — active)
-# Legacy: VITE_API_URL=http://localhost:5000    (Flask — deprecated, removal Sprint-03)
+# Requires: VITE_API_URL=http://localhost:8000
 
 # Run dev server (port 3000)
 npm run dev
@@ -91,7 +66,7 @@ Browser (React/TypeScript, port 3000)
     ↓ [Drag-drop file or click upload]
 FileUpload component
     ↓ [FormData POST to /api/analyze/bank/statement]
-FastAPI Backend (port 8000) ← active; Flask (port 5000) deprecated
+FastAPI Backend (port 8000)
     ├─ AnalyzeController: validates request, saves file to uploads/
     ├─ AnalyzeModel: routes to appropriate processor
     └─ BankStatementAnalyzer: core parsing logic
@@ -108,33 +83,21 @@ Frontend dashboard
     └─ TransactionTable: searchable transaction list with payment methods
 ```
 
-### Backend Structure (Flask MVC — backend/) ⚠️ Deprecated — removal Sprint-03
-
-| Layer       | Location                             | Purpose                                                                                |
-| ----------- | ------------------------------------ | -------------------------------------------------------------------------------------- |
-| Entry Point | run.py                               | Creates Flask app via create_app(), runs on port 5000 (legacy — use port 8000 FastAPI) |
-| App Init    | app/**init**.py                      | Bootstraps Flask app, registers CORS, loads blueprints                                 |
-| Route       | app/routes/routes.py                 | Single endpoint: POST /api/analyze/bank/statement                                      |
-| Controller  | app/controllers/analyzeController.py | Handles file upload, saves to uploads/, delegates to model                             |
-| Model       | app/models/analyzeModel.py           | Core business logic                                                                    |
-| Config      | app/config/config.py                 | Loads CORS_URLS from .env                                                              |
-| Constants   | app/constants/constants.py           | HTTP status code map                                                                   |
-
 ### Backend Structure (FastAPI — backend-v2/)
 
-| Layer       | Location               | Purpose                                                                                       |
-| ----------- | ---------------------- | --------------------------------------------------------------------------------------------- |
-| Entry Point | run.py                 | Starts uvicorn on port 8000                                                                   |
-| App Init    | app/main.py            | FastAPI app, CORS middleware, router registration                                             |
-| Router      | app/routers/health.py  | GET /api/health                                                                               |
-| Router      | app/routers/analyze.py | POST /api/analyze/bank/statement (async, to_thread); calls the LLM enricher                   |
-| Router      | app/routers/summary.py | POST /api/analyze/bank/summary (sync; pure-math financial summary) — BSA-05                    |
-| Service     | app/services/llm_enricher.py | enrich_with_llm() — Ollama category fallback for category=[] rows — BSA-04 (⚠️ TD-033)   |
-| Model       | app/models/analyzer.py | BankStatementAnalyzer + TransactionPatternTrainer (copied from Flask, Flask imports stripped) |
-| Schemas     | app/models/schemas.py  | Pydantic v2 models: Transaction, AccountInfo, AnalysisResult, AnalyzeResponse, SummaryResponse |
-| Config      | app/config/settings.py | pydantic-settings: cors_origins, max_upload_size_mb, debug, ollama_base_url, ollama_model      |
+| Layer       | Location                     | Purpose                                                                                        |
+| ----------- | ---------------------------- | ---------------------------------------------------------------------------------------------- |
+| Entry Point | run.py                       | Starts uvicorn on port 8000                                                                    |
+| App Init    | app/main.py                  | FastAPI app, CORS middleware, router registration                                              |
+| Router      | app/routers/health.py        | GET /api/health                                                                                |
+| Router      | app/routers/analyze.py       | POST /api/analyze/bank/statement (async, to_thread); calls the LLM enricher                    |
+| Router      | app/routers/summary.py       | POST /api/analyze/bank/summary (sync; pure-math financial summary) — BSA-05                    |
+| Service     | app/services/llm_enricher.py | enrich_with_llm() — Ollama category fallback for category=[] rows — BSA-04                     |
+| Model       | app/models/analyzer.py       | BankStatementAnalyzer + TransactionPatternTrainer — canonical parsing engine                   |
+| Schemas     | app/models/schemas.py        | Pydantic v2 models: Transaction, AccountInfo, AnalysisResult, AnalyzeResponse, SummaryResponse |
+| Config      | app/config/settings.py       | pydantic-settings: cors_origins, max_upload_size_mb, debug, ollama_base_url, ollama_model      |
 
-### Core Classes in analyzeModel.py
+### Core Classes in analyzer.py
 
 **Active:**
 
@@ -159,19 +122,19 @@ Frontend dashboard
 
 ### Frontend Structure (React + TypeScript)
 
-| File                            | Purpose                                                                                                                                                      |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| App.tsx                         | Root component; manages analysis state, orchestrates layout                                                                                                  |
-| types.ts                        | TypeScript interfaces: AccountInfo, Transaction, AnalysisResult, ApiResponse                                                                                 |
-| services/api.ts                 | uploadBankStatement(file) function; base URL from `VITE_API_URL` env var (`.env.local` sets http://localhost:8000; fallback http://localhost:5000 is legacy) |
-| components/FileUpload.tsx       | Drag-drop + click file input; loading state; error alerts                                                                                                    |
-| components/AccountOverview.tsx  | Bank details, account holder, confidence %, statement period                                                                                                 |
-| components/AnalyticsCharts.tsx  | Recharts: balance history (line), income vs. expense (bar), top merchants (pie)                                                                              |
-| components/MerchantInsights.tsx | Merchant table with counts, amounts, frequency                                                                                                               |
-| components/TransactionTable.tsx | Transaction list with date, narration, payment method, amount, balance, type                                                                                 |
-| components/ErrorBoundary.tsx    | Per-section error boundary                                                                                                                                   |
-| index.tsx                       | React 19 DOM entry                                                                                                                                           |
-| vite.config.ts                  | Vite config; dev port 3000                                                                                                                                   |
+| File                            | Purpose                                                                                                         |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| App.tsx                         | Root component; manages analysis state, orchestrates layout                                                     |
+| types.ts                        | TypeScript interfaces: AccountInfo, Transaction, AnalysisResult, ApiResponse                                    |
+| services/api.ts                 | uploadBankStatement(file) function; exports API_BASE from VITE_API_URL env var (defaults http://localhost:8000) |
+| components/FileUpload.tsx       | Drag-drop + click file input; loading state; error alerts                                                       |
+| components/AccountOverview.tsx  | Bank details, account holder, confidence %, statement period                                                    |
+| components/AnalyticsCharts.tsx  | Recharts: balance history (line), income vs. expense (bar), top merchants (pie)                                 |
+| components/MerchantInsights.tsx | Merchant table with counts, amounts, frequency                                                                  |
+| components/TransactionTable.tsx | Transaction list with date, narration, payment method, amount, balance, type                                    |
+| components/ErrorBoundary.tsx    | Per-section error boundary                                                                                      |
+| index.tsx                       | React 19 DOM entry                                                                                              |
+| vite.config.ts                  | Vite config; dev port 3000                                                                                      |
 
 No global state manager; all data flows top-down via props.
 
@@ -298,128 +261,93 @@ For each unique merchant (or receiver if merchant not found):
 **Fixed:**
 
 - ~~Broken Pennyless Integration~~ — deleted (TD-022, 2026-05-31)
-- ~~File cleanup~~ — `finally` block deletes uploaded file after every request (both backends)
-- ~~Hardcoded API URL~~ — frontend reads `VITE_API_URL` env var
-- ~~Dead code classes~~ — removed (Sprint 01)
-- ~~Unused scikit-learn dependency~~ — removed from requirements.txt
-- ~~requirements.txt UTF-16 encoding~~ — re-encoded as UTF-8 (TD-001, 2026-05-31)
+- ~~File cleanup~~ — `finally` block deletes uploaded file after every request (TD-005, 2026-05-29)
+- ~~Hardcoded API URL~~ — frontend reads `VITE_API_URL` env var (TD-010, 2026-05-29)
+- ~~Dead code classes~~ — removed (TD-006, Sprint-01)
+- ~~Unused scikit-learn dependency~~ — removed from requirements.txt (TD-009, 2026-05-29)
+- ~~requirements.txt UTF-16 encoding~~ — re-encoded as UTF-8; CI guard added (TD-001, 2026-06-20)
 - ~~`.gitIgnore` not recognized~~ — renamed to `.gitignore`, missing patterns added (TD-020, 2026-05-31)
-- ~~No `/api/health` endpoint~~ — added to Flask blueprint and FastAPI router (TD-027, 2026-05-31)
+- ~~No `/api/health` endpoint~~ — added to FastAPI router (TD-027, 2026-05-31)
+- ~~LLM enricher index bug~~ — double-index fixed; aggregates recomputed post-enrich (TD-033/TD-034, 2026-06-20)
+- ~~Summary endpoint untyped input~~ — retyped with `Transaction` schema (TD-036, 2026-06-20)
+- ~~Stale frontend URL strings~~ — `API_BASE` centralized; fallback updated to port 8000 (TD-037, 2026-06-20)
 
 **Open:**
 
-1. **LLM enricher index bug (TD-033 🔴)**: `llm_enricher.py` maps results with `batch_indices[item["index"]]` — a double-index that makes BSA-04 silently enrich nothing. Fix first (`docs/prompts/sprint-03/01-llm-enricher-fix.md`).
+1. **Enrichment unbounded/blocking (TD-035)**: sequential 60s batches awaited inline; no global deadline. 200 uncategorized rows → minutes.
 
-2. **Enrichment not reflected in aggregates (TD-034)**: `merchant_insights`/`confidence_summary` are computed before `enrich_with_llm()` runs, so LLM-filled merchants/categories never reach them.
+2. **BSA-04/05 have no UI (TD-038)**: `llm_enriched` isn't in `types.ts`; nothing renders the summary endpoint. Both features ship invisible.
 
-3. **Enrichment unbounded/blocking (TD-035)**: sequential 60s batches awaited inline; no global deadline. 200 uncategorized rows → minutes.
+3. **No Authentication**: Endpoint is fully public. No auth layer planned until user accounts are in scope.
 
-4. **Summary endpoint untyped input (TD-036)**: `summary.py` takes `list[dict]`; a bad `amount` → 500. Reuse the `Transaction` schema.
+4. **PDF Limitations**: Scanned (image-based) PDFs fail silently; only works with digital/table-based PDFs. Needs OCR (Tesseract or Azure) to fix.
 
-5. **Stale frontend URL strings (TD-037)**: `App.tsx`/`api.ts` still say `localhost:5000` in error text + env fallback after the port-8000 cutover.
-
-6. **BSA-04/05 have no UI (TD-038)**: `llm_enriched` isn't in `types.ts`; nothing renders the summary endpoint. Both features ship invisible.
-
-7. **No Authentication**: Both backends have fully public endpoints. No auth layer planned until user accounts are in scope.
-
-8. **PDF Limitations**: Scanned (image-based) PDFs fail silently; only works with digital/table-based PDFs. Needs OCR (Tesseract or Azure) to fix.
-
-9. **No Balance Validation**: Running balance not validated against credit/debit deltas; inconsistent data passes through undetected.
-
-> The Flask synchronous-endpoint and cwd-relative `uploads/` issues are resolved: FastAPI uses `asyncio.to_thread()` (frontend cut over via BSA-09) and `UPLOAD_DIR` is now file-anchored (TD-032).
+5. **No Balance Validation**: Running balance not validated against credit/debit deltas; inconsistent data passes through undetected.
 
 ## Common Development Tasks
 
 ### Adding a New Payment Method Detection
 
-1. Open backend/app/models/analyzeModel.py, find analyze_narration_details() (~line 877)
-2. Add keyword to payment_methods_keywords dict (~line 934) or add new regex pattern
+1. Open `backend-v2/app/models/analyzer.py`, find `analyze_narration_details()` (~line 877)
+2. Add keyword to `payment_methods_keywords` dict (~line 934) or add new regex pattern
 3. Test with sample narration
 4. Verify in TransactionTable UI
 
 ### Handling a New Document Format
 
-1. Modify extract_transactions() in BankStatementAnalyzer (~line 211)
+1. Modify `extract_transactions()` in `BankStatementAnalyzer` (~line 211)
 2. Add file extension check and route to appropriate processor
 3. Ensure column detection and amount parsing work
-4. Update FileUpload.tsx file input accept attribute
+4. Update `FileUpload.tsx` file input accept attribute
 5. Update README.md
 
 ### Customizing Merchant Categories
 
-1. Open backend/app/models/analyzeModel.py
-2. Find merchants_and_categories dict (~line 1034)
-3. Add/modify: "MERCHANT_NAME": {"merchant": "...", "category": "...", "payment_gateway": "..."}
+1. Open `backend-v2/app/models/analyzer.py`
+2. Find `merchants_and_categories` dict (~line 1034)
+3. Add/modify: `"MERCHANT_NAME": {"merchant": "...", "category": "...", "payment_gateway": "..."}`
 4. Rebuild frontend if needed
 
 ### Debugging Parsing Issues
 
-- Check uploads/ for uploaded file
-- Review confidence_score (low score indicates quality issues)
-- Trace analyze_narration_details() and \_extract_metadata_from_text() for pattern mismatches
-- Use print statements in analyzeModel.py (visible in Flask console)
-- For PDF: verify pdfplumber extraction with pdfplumber.open(file_path).pages[0].extract_tables()
+- Check `uploads/` for uploaded file
+- Review `confidence_score` (low score indicates quality issues)
+- Trace `analyze_narration_details()` and `_extract_metadata_from_text()` for pattern mismatches
+- For PDF: verify pdfplumber extraction with `pdfplumber.open(file_path).pages[0].extract_tables()`
 
 ## Testing
 
-### Unit / Integration Tests (pytest — Flask backend)
-
-```bash
-cd backend
-# activate venv first
-pytest                          # run all tests (23 pass, 1 xfail)
-pytest tests/test_parse_amount.py          # single test file
-pytest tests/test_narration.py -v          # verbose output
-pytest -k "test_upi"                       # run tests matching a pattern
-```
-
-Test files in `backend/tests/`: `test_parse_amount.py`, `test_normalize_date.py`, `test_narration.py`, `test_health.py`. Fixture for the Flask test client lives in `backend/conftest.py`.
-
-**Known xfail:** UPI structured match returns early before merchant detection — `UPI/.../AMAZON PAY/...` yields `merchant=None`. Marked `@pytest.mark.xfail` in `test_narration.py` pending a fix.
-
-### Integration Tests (pytest + httpx — FastAPI backend)
+### Tests (pytest — FastAPI backend)
 
 ```bash
 cd backend-v2
-pytest -m "not integration"     # 7 in-process ASGI tests — no live server needed
-pytest                          # also runs test_parity.py (needs both backends running)
+# activate venv first
+pytest                          # run all tests (18 pass)
+pytest tests/test_analyze.py -v         # verbose output for a single file
+pytest -k "test_upi"                    # run tests matching a pattern
 ```
 
-`backend-v2/tests/`: `test_health.py`, `test_analyze.py`, `test_parity.py` (gated behind the `integration` marker, removed when Flask is deleted). Client fixture via `ASGITransport` in `backend-v2/conftest.py`.
+Test files in `backend-v2/tests/`: `test_health.py`, `test_analyze.py`, `test_summary.py`, `test_llm_enricher.py`. Client fixture via `ASGITransport` in `backend-v2/conftest.py`.
 
-**Coverage gaps (see `docs/testing-strategy.md`):** no test exercises `llm_enricher.py` (TD-033) or `summary.py` (TD-036) yet, and the frontend has no test suite. The testing strategy doc is the reference for what to add and where — Vitest + React Testing Library for the frontend, plus a CI workflow that also guards `requirements.txt` encoding (TD-001).
+**Coverage gaps (see `docs/testing-strategy.md`):** Frontend has no test suite. PDF multi-page path and the enrichment-down degradation path need integration fixtures.
 
 ### Manual / cURL
 
 ```bash
-# FastAPI (active — port 8000)
 curl -X POST http://localhost:8000/api/analyze/bank/statement \
   -F "file=@/path/to/statement.xlsx"
 
 curl http://localhost:8000/api/health   # {"status": "ok", "service": "bank-statement-analyzer"}
-
-# Flask (deprecated — port 5000; removal Sprint-03)
-curl -X POST http://localhost:5000/api/analyze/bank/statement \
-  -F "file=@/path/to/statement.xlsx"
 ```
 
 ### Browser
 
-1. Start backend and frontend dev servers
+1. Start backend (`cd backend-v2 && uvicorn app.main:app --reload --port 8000`) and frontend dev servers
 2. Open http://localhost:3000
 3. Upload test files
-4. Check browser DevTools Network tab and Flask console
+4. Check browser DevTools Network tab
 
 ## Environment Variables
-
-**.env (backend)**
-
-```
-FLASK_APP=run.py
-FLASK_ENV=development
-CORS_URLS=["http://localhost:3000"]
-FLASK_DEBUG=True
-```
 
 **.env.local (frontend)**
 
@@ -427,23 +355,28 @@ FLASK_DEBUG=True
 VITE_API_URL=http://localhost:8000
 ```
 
-(Sprint-02+: FastAPI on port 8000. Flask on port 5000 is deprecated — removal Sprint-03.)
+**.env (backend-v2 — optional overrides via pydantic-settings)**
+
+```
+CORS_ORIGINS=["http://localhost:3000"]
+MAX_UPLOAD_SIZE_MB=20
+DEBUG=false
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=qwen2.5:7b
+```
 
 ## Technology Stack
 
-**Backend v1 (Flask):** Flask 3.1.2, pdfplumber, pandas 2.3.3, openpyxl 3.1.5, requests 2.32.5, python-dotenv 1.2.1
-
-**Backend v2 (FastAPI):** FastAPI 0.115.12, uvicorn, pydantic 2.11.4, pydantic-settings 2.9.1, python-multipart 0.0.20, pdfplumber, pandas 2.3.3, openpyxl 3.1.5, requests 2.32.5, python-dotenv 1.2.1
+**Backend (FastAPI):** FastAPI 0.115.12, uvicorn, pydantic 2.11.4, pydantic-settings 2.9.1, python-multipart 0.0.20, pdfplumber, pandas 2.3.3, openpyxl 3.1.5, python-dotenv 1.2.1
 
 **Frontend:** React 19.2.0, TypeScript 5.8.2, Vite 6.2.0, Recharts 3.5.1, Lucide React 0.555.0, Tailwind CSS (CDN)
 
 ## Deployment Notes
 
 - No Dockerfile or docker-compose
-- No .env.example (referenced in README but missing)
-- Frontend build outputs to dist/
+- Frontend build outputs to `dist/`
 - Backend debug mode should be disabled in production
-- uploads/ directory grows unbounded; needs cleanup strategy
+- `uploads/` directory grows unbounded; needs cleanup strategy
 
 ---
 

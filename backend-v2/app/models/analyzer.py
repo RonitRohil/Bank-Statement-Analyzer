@@ -7,6 +7,8 @@ import os
 from datetime import datetime
 from collections import defaultdict
 
+from app.services.categories import REGEX_TO_CANONICAL
+
 logger = logging.getLogger(__name__)
 
 
@@ -1207,6 +1209,12 @@ class BankStatementAnalyzer:
         )
         if possible_accounts:
             result["receiver_details"]["account"] = possible_accounts[0]
+
+        result["category"] = list(
+            dict.fromkeys(
+                REGEX_TO_CANONICAL.get(c, c) for c in result["category"]
+            )
+        )
 
         return result
 

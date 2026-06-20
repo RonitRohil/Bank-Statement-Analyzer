@@ -1,7 +1,64 @@
 # Changelog — Bank Statement Analyzer
 
-All notable changes to this project are documented here.  
+All notable changes to this project are documented here.
 Format: `[Date] — [Type] — [Short description]`
+
+---
+
+## 2026-06-20 — ADR-002: Persistence layer decision — SQLite via SQLModel
+
+**Type:** Architecture decision
+**Decision:** Adopt SQLite via SQLModel as the persistence layer. Data model designed: three tables — `statements` (one row per uploaded file, keyed by `file_hash` for dedup), `transactions` (FK to `statements`, full enriched transaction data), `corrections` (fingerprint-keyed user corrections for BSA-16 learning loop). Migration path to Postgres documented but deferred until multi-user is a real requirement.
+**Reason:** Every high-value longitudinal feature (BSA-06/07/16/17, TD-024) is gated on a persistence store. SQLite is zero-infra, one file, and SQLModel reuses the Pydantic models already in the codebase. PostgreSQL adds operational overhead with no current payoff for a single-user project. File-based JSON cannot support relational queries.
+**Impact:** Unlocks BSA-06, BSA-07, BSA-16, BSA-17, TD-024. The `analyze` endpoint gains an optional stateful path (storage is additive — stateless path still works). Implementation is BSA-19 (Sprint-04 P0). Open questions deferred to BSA-19: encryption-at-rest, data-retention policy, Alembic migration init.
+**Files affected:** `docs/adr-002-persistence.md` (new), `docs/architecture.md` (DB row updated + footer link), `docs/sprint-03-plan.md` (ADR-002 marked done; BSA-19 marked Sprint-04 P0)
+
+---
+
+## 2026-06-20 — BSA-18: Decommission Flask backend; add CI
+
+**Type:** Architecture — cleanup + infrastructure
+**Decision:** Delete `backend/` (Flask app, tests, conftest, requirements). Delete `backend-v2/tests/test_parity.py`. Add `.github/workflows/test.yml`. Update CLAUDE.md, architecture.md, requirements.md to FastAPI-only.
+**Reason:** Flask's rollback window (one sprint after BSA-09 cutover) expired. Two copies of `BankStatementAnalyzer` guaranteed drift (TD-007). CI closes TD-001's "add a CI guard" watch item.
+**Impact:** `backend/` is gone — FastAPI (`backend-v2/`) is the canonical and only backend. GitHub Actions now runs pytest and guards `backend-v2/requirements.txt` encoding on every push/PR.
+**Files affected:** `backend/` (deleted), `backend-v2/tests/test_parity.py` (deleted), `backend-v2/pyproject.toml`, `.github/workflows/test.yml` (new), `CLAUDE.md`, `docs/architecture.md`, `docs/requirements.md`, `docs/tech-debt.md`
+**Tech debt closed:** TD-001 (CI guard for requirements.txt encoding)
+
+---
+
+## 2026-06-20 — TD-036: Type summary endpoint input with Transaction schema
+
+**Type:** Bug fix (high)
+**Decision:** Replace `SummaryRequest.transactions: list[dict[str, Any]]` with `list[Transaction]`; use attribute access in the math loop; replace the `total_spend = 1` sentinel with an explicit empty-case guard; document the >100% category-percentage caveat.
+**Root cause:** The summary endpoint accepted raw dicts, so a client sending `amount: "oops"` would reach `abs(float(amount))` and return a 500. Pydantic v2 is already in the stack — the typed `Transaction` schema from `schemas.py` handles coercion and rejects bad input at the boundary with a 422.
+**Fix:** `summary.py`: import `Transaction`, change `SummaryRequest.transactions` type, replace all `.get()` calls with attribute access (`txn.amount`, `txn.transaction_type`, etc.), remove the magic sentinel (`total_expenses if total_expenses > 0 else 1`), replace with an `if total_expenses <= 0: by_category = []` guard. `schemas.py`: add `Field(description=...)` on `SummaryResponse.by_category` noting the >100% possibility.
+**Tests added:** `backend-v2/tests/test_summary.py` — 3 cases: 5-transaction math fixture (income, expenses, net, top merchants, date range), empty list (all zeros, `by_category == []`), bad amount returns 422.
+**Impact:** String amounts → 422 instead of 500. No change to output shape or math for valid inputs.
+**Files affected:** `backend-v2/app/routers/summary.py`, `backend-v2/app/models/schemas.py`, `backend-v2/tests/test_summary.py` (new)
+
+---
+
+## 2026-06-20 — TD-037: Centralize API base URL; drop stale localhost:5000 strings
+
+**Type:** Bug fix (low)
+**Decision:** Export `API_BASE` from `api.ts` as the single source of truth for the backend URL; update fallback default from `:5000` to `:8000`; interpolate `API_BASE` into both network error messages instead of hardcoding a port.
+**Root cause:** BSA-09 (Sprint-02) cut the frontend over to FastAPI on port 8000 but left three stale `:5000` references: the env fallback in `api.ts`, the network-error throw in `api.ts`, and the catch-block message in `App.tsx`. Users whose backend is down were directed to the wrong, deprecated port.
+**Fix:** `api.ts`: `const` → `export const`, `'http://localhost:5000'` → `'http://localhost:8000'`, template-literal error string using `API_BASE`. `App.tsx`: imports `API_BASE`, uses it in the connection-failed message.
+**Impact:** Error messages always reflect the configured URL. No functional behaviour change.
+**Files affected:** `frontend/services/api.ts`, `frontend/App.tsx`
+
+---
+
+## 2026-06-20 — TD-033, TD-034: Fix LLM enricher index bug; recompute aggregates after enrich
+
+**Type:** Bug fix (critical + high)
+**Decision:** Fix double-indexing in `enrich_with_llm()` and recompute `merchant_insights` after enrichment runs.
+**Root cause (TD-033):** `llm_enricher.py` line 106 used `batch_indices[item["index"]]` to map model results back onto transactions. The prompt tells the model to echo the **global** transaction index back verbatim — so `item["index"]` was already the global index. Indexing into `batch_indices` a second time produced either an `IndexError` (masked by the catch-all `except`) or a write onto the completely wrong transaction. BSA-04 was shipping as a silent no-op since Sprint-02.
+**Fix (TD-033):** Changed `txn_index = batch_indices[item["index"]]` → `txn_index = item.get("index")`, with an explicit bounds check that logs a warning and skips rather than crashing. The catch-all `except` now only catches genuinely unexpected errors.
+**Fix (TD-034):** After `enrich_with_llm()` mutates the transactions list, `analyze.py` now calls `TransactionPatternTrainer().analyze(enriched)` and overwrites `result["result"]["merchant_insights"]`. `TransactionPatternTrainer` is already importable standalone with no constructor args — no restructuring needed.
+**Test added:** `backend-v2/tests/test_llm_enricher.py` — 4 cases: correct index lands on right row, out-of-range index skipped without crash, existing merchant not overwritten, Ollama down returns transactions unchanged.
+**Impact:** BSA-04 (LLM categorization) now actually works. LLM-filled merchants appear in `merchant_insights`.
+**Files affected:** `backend-v2/app/services/llm_enricher.py`, `backend-v2/app/routers/analyze.py`, `backend-v2/tests/test_llm_enricher.py` (new)
 
 ---
 
@@ -26,6 +83,7 @@ Format: `[Date] — [Type] — [Short description]`
 **Type:** Bug fix (data loss)
 **Root cause:** `_process_pdf_transactions()` always treated `table[0]` as the header row when iterating over pdfplumber's per-page table list. When a bank statement table continues onto page 2+ without repeating its header row, the first data row was consumed as column names and silently dropped. All subsequent rows were then skipped because the "detected columns" no longer matched any known column names. Statements spanning 4 pages could return only the first page's transactions with no error.
 **Fix:** Added `_looks_like_header(row)` as a `@staticmethod` on `BankStatementAnalyzer`. It checks whether any cell in a row matches known header keywords (`date`, `narration`, `debit`, `credit`, `balance`, etc.). In `_process_pdf_transactions`, before the pdfplumber loop, `last_known_headers = None` is initialized. For each extracted table:
+
 - If `table[0]` looks like a header → use it normally, update `last_known_headers`
 - If not and a previous header is known → reuse it (continuation page), all rows become data rows
 - If not and no header seen yet → log a warning and skip
@@ -46,6 +104,7 @@ Logs `[PDF] Continuation table detected` at DEBUG for each continuation page.
 - `backend-v2/app/main.py`: imports and registers `summary.router`.
 
 **Design notes:**
+
 - Category totals are counted once per category per transaction (a multi-category transaction contributes full spend to each category). This means category percentages can sum to >100% — intentional; see prompt BSA-05 constraints.
 - Merchant breakdown covers expense (debit) transactions only; credits are excluded from category/merchant tallies.
 - `date_range` is derived from `transaction_date` strings via lexicographic sort (ISO YYYY-MM-DD format assumed from the analyze endpoint output).
@@ -70,11 +129,12 @@ Logs `[PDF] Continuation table detected` at DEBUG for each continuation page.
 - `backend-v2/app/services/__init__.py` (new): empty package init for the services module.
 
 **Constraints respected:**
+
 - LLM never called per-transaction; always batched (10/call).
 - Ollama not running → `ConnectError` caught, enrichment skipped, endpoint unaffected.
 - No new pip dependency — `httpx` already in requirements for test suite.
 
-**Files affected:** backend-v2/app/services/llm_enricher.py (new), backend-v2/app/services/__init__.py (new), backend-v2/app/routers/analyze.py, backend-v2/app/config/settings.py, backend-v2/app/models/schemas.py, backend-v2/.env.example
+**Files affected:** backend-v2/app/services/llm_enricher.py (new), backend-v2/app/services/**init**.py (new), backend-v2/app/routers/analyze.py, backend-v2/app/config/settings.py, backend-v2/app/models/schemas.py, backend-v2/.env.example
 
 ---
 

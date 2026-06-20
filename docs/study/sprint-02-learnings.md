@@ -1,7 +1,7 @@
 # Study Document — Sprint-02
 
 **Sprint window:** 2026-06-13 → 2026-06-19 (shipped) · **Written:** 2026-06-20
-**Audience:** a developer reading this code for the first time who wants to understand not just *what* Sprint-02 did but *why every decision was made*.
+**Audience:** a developer reading this code for the first time who wants to understand not just _what_ Sprint-02 did but _why every decision was made_.
 
 Sprint-01 built the FastAPI foundation. Sprint-02 was the "collect on the investment" sprint: cut the frontend over to FastAPI, decommission Flask, and ship the first two real features — LLM categorization and a financial summary — on top of the async backend.
 
@@ -37,7 +37,7 @@ Seven distinct pieces of work landed:
 
 The functional change is tiny: `frontend/.env.local` sets `VITE_API_URL=http://localhost:8000`, and `api.ts` reads it via `import.meta.env.VITE_API_URL`. Flask's `run.py` got a `DeprecationWarning` on startup but is otherwise untouched — kept alive one sprint as a rollback. `CLAUDE.md` and `architecture.md` were updated to mark Flask deprecated.
 
-**Gotcha that slipped through:** the *functional* URL moved to 8000, but two **error-message strings** still say "localhost:5000" (`App.tsx:35`, `api.ts:22`), and the env fallback in `api.ts:3` is still `5000`. So a user whose backend is down is told to check the wrong port. Logged as TD-037. Lesson: when you change a config value, grep the *whole* surface, not just the code path — strings in error messages count.
+**Gotcha that slipped through:** the _functional_ URL moved to 8000, but two **error-message strings** still say "localhost:5000" (`App.tsx:35`, `api.ts:22`), and the env fallback in `api.ts:3` is still `5000`. So a user whose backend is down is told to check the wrong port. Logged as TD-037. Lesson: when you change a config value, grep the _whole_ surface, not just the code path — strings in error messages count.
 
 ### 3.2 LLM enrichment (BSA-04)
 
@@ -51,6 +51,7 @@ The functional change is tiny: `frontend/.env.local` sets `VITE_API_URL=http://l
 It is called from `analyze.py` after `extract_transactions()` succeeds, and only when the transactions list is non-empty.
 
 **Design decisions that were right:**
+
 - **Batched, never per-transaction** — 10 narrations per call keeps cost/latency sane.
 - **Non-blocking failure** — every exception is caught; Ollama being down just returns the transactions unchanged. `ConnectError` breaks the batch loop early (no point retrying 19 more batches if the server is gone).
 - **No new dependency** — used the already-present `httpx` instead of pulling in `anthropic`.
@@ -63,34 +64,34 @@ It is called from `analyze.py` after `extract_transactions()` succeeds, and only
 
 `backend-v2/app/routers/summary.py` — `summarize_transactions()` is a sync `def` (pure CPU math, no I/O, so `async` would only add overhead). It walks the transactions once, splitting CREDIT into income and everything else into expense, tallying per-category and per-merchant spend, and returns a `SummaryResponse` with totals, net, top-10 merchants, by-category breakdown (sorted desc), transaction count, average, and a derived date range.
 
-**Subtlety:** a transaction with two categories adds its full amount to *each* category, so category percentages can sum to >100%. This is intentional (a coffee that's both "Food & Dining" and "Shopping" really did cost what it cost), but it's a UX trap — the frontend must not render it as a naive pie that claims to sum to 100%. See CR-S2-06.
+**Subtlety:** a transaction with two categories adds its full amount to _each_ category, so category percentages can sum to >100%. This is intentional (a coffee that's both "Food & Dining" and "Shopping" really did cost what it cost), but it's a UX trap — the frontend must not render it as a naive pie that claims to sum to 100%. See CR-S2-06.
 
 **The gap:** the endpoint takes `list[dict[str, Any]]` instead of the typed `Transaction` model, so a malformed `amount` reaches `float()` and 500s. Logged as TD-036.
 
 ### 3.4 Multi-page PDF stitching (TD-021)
 
-`_looks_like_header(row)` (new `@staticmethod`) checks whether any cell matches known header keywords. `_process_pdf_transactions` now keeps `last_known_headers`: if a table's first row looks like a header, use and remember it; if not but a header was seen earlier, reuse it (this is a continuation page — every row is data); if no header has ever been seen, warn and skip. Applied to **both** backends to keep the copies in sync. This is the cleanest fix shape — it relies on the *content* of the row, not a fragile page-count or row-count heuristic.
+`_looks_like_header(row)` (new `@staticmethod`) checks whether any cell matches known header keywords. `_process_pdf_transactions` now keeps `last_known_headers`: if a table's first row looks like a header, use and remember it; if not but a header was seen earlier, reuse it (this is a continuation page — every row is data); if no header has ever been seen, warn and skip. Applied to **both** backends to keep the copies in sync. This is the cleanest fix shape — it relies on the _content_ of the row, not a fragile page-count or row-count heuristic.
 
 ---
 
 ## 4. Key Decisions & Alternatives Considered
 
-| Decision | Chosen | Alternative | Why |
-|----------|--------|-------------|-----|
-| LLM provider | Local Ollama `qwen2.5:7b` | Anthropic Claude Haiku (as planned) | Free for dev; swappable via one env var |
-| LLM call shape | Batch of 10 | Per-transaction | 10× fewer calls; cheaper, faster |
-| LLM failure mode | Catch-all, return unchanged | Propagate error | Enrichment is a *nice-to-have*; must never break the core parse |
-| Summary delivery | Separate endpoint | `?include_summary=true` on analyze | Endpoint is more flexible for the frontend; second round-trip is cheap |
-| Summary sync vs async | sync `def` | `async def` + `to_thread` | Pure CPU, no I/O — async adds overhead with no benefit |
-| PDF header detection | Content-based `_looks_like_header` | Page-count / row-count heuristic | Robust to varying bank layouts |
-| Cutover safety | Keep Flask + parity test | Delete Flask immediately | Reversible; parity test proves equivalence first |
+| Decision              | Chosen                             | Alternative                         | Why                                                                    |
+| --------------------- | ---------------------------------- | ----------------------------------- | ---------------------------------------------------------------------- |
+| LLM provider          | Local Ollama `qwen2.5:7b`          | Anthropic Claude Haiku (as planned) | Free for dev; swappable via one env var                                |
+| LLM call shape        | Batch of 10                        | Per-transaction                     | 10× fewer calls; cheaper, faster                                       |
+| LLM failure mode      | Catch-all, return unchanged        | Propagate error                     | Enrichment is a _nice-to-have_; must never break the core parse        |
+| Summary delivery      | Separate endpoint                  | `?include_summary=true` on analyze  | Endpoint is more flexible for the frontend; second round-trip is cheap |
+| Summary sync vs async | sync `def`                         | `async def` + `to_thread`           | Pure CPU, no I/O — async adds overhead with no benefit                 |
+| PDF header detection  | Content-based `_looks_like_header` | Page-count / row-count heuristic    | Robust to varying bank layouts                                         |
+| Cutover safety        | Keep Flask + parity test           | Delete Flask immediately            | Reversible; parity test proves equivalence first                       |
 
 ---
 
 ## 5. What To Watch Out For (gotchas & known limitations)
 
-1. **BSA-04 is currently a silent no-op** (TD-033). Don't believe it works until the index bug is fixed and a unit test proves a category lands on the right row.
-2. **Enrichment results never reach `merchant_insights` / `confidence_summary`** (TD-034) — they're computed before enrichment runs. The response is internally inconsistent once TD-033 is fixed.
+1. ~~**BSA-04 is currently a silent no-op** (TD-033).~~ **CLOSED (2026-06-20, Sprint-03):** index bug fixed — `item["index"]` is now used directly as the global txn index with a bounds check. Regression test in `backend-v2/tests/test_llm_enricher.py`.
+2. ~~**Enrichment results never reach `merchant_insights` / `confidence_summary`** (TD-034)~~ **CLOSED (2026-06-20, Sprint-03):** `analyze.py` now recomputes `merchant_insights` via `TransactionPatternTrainer().analyze(enriched)` after `enrich_with_llm()` returns.
 3. **Enrichment can block for minutes** (TD-035) — no global timeout, sequential 60 s batches.
 4. **Summary trusts client input** (TD-036) — untyped dicts, easy 500.
 5. **Two category taxonomies** (CR-S2-08) — the regex categorizer emits `FOOD_DELIVERY`; the LLM emits `Food & Dining`. They don't reconcile. Unify before anything downstream groups by category.
@@ -101,7 +102,7 @@ It is called from `analyze.py` after `extract_transactions()` succeeds, and only
 
 ## 6. What's Next
 
-The honest framing: **Sprint-02 shipped the plumbing for two features but neither is user-ready.** Sprint-03's first job is to *finish* Sprint-02, not pile on new scope. Concretely:
+The honest framing: **Sprint-02 shipped the plumbing for two features but neither is user-ready.** Sprint-03's first job is to _finish_ Sprint-02, not pile on new scope. Concretely:
 
 - **Fast-follow (Sprint-03 P0):** TD-033 (index bug), TD-037 (port strings), TD-036 (type summary), TD-034 (aggregate after enrich), TD-035 (bound enrichment). All small; all the difference between "shipped" and "works."
 - **Then surface the value (P1):** wire a Spending Summary card and an "AI-categorized" badge into the dashboard (TD-038).
@@ -111,4 +112,4 @@ Full plan in `docs/sprint-03-plan.md`. Feature ideas explored in `docs/feature-b
 
 ---
 
-*Previous study docs: `docs/study/sprint-01-learnings.md`, `docs/study/fastapi-migration-sprint-01.md`, `docs/study/multipage-pdf-fix-td021.md` · Review: `docs/code-review.md` · Changelog: `docs/changelog.md`*
+_Previous study docs: `docs/study/sprint-01-learnings.md`, `docs/study/fastapi-migration-sprint-01.md`, `docs/study/multipage-pdf-fix-td021.md` · Review: `docs/code-review.md` · Changelog: `docs/changelog.md`_

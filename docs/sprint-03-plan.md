@@ -62,10 +62,9 @@ A row of plain-language callouts derived from the existing response. Highest per
 
 ## P2 — Architectural Decision (design only this sprint)
 
-### ADR-002 — Persistence layer
-**Decide and document, don't necessarily build.** Recommendation (carried from Sprint-02 backlog + `feature-brainstorm.md`): **SQLite via SQLModel**. Design the data model (`statements`, `transactions`, `corrections`) and write the ADR. Implementation lands Sprint-04.
-**Prompt:** `prompts/sprint-03/08-adr-persistence.md` (this is a *design* prompt — produces an ADR, not code)
-**Est.:** 2h (writing + review)
+### ADR-002 — Persistence layer ✅
+**Decided:** SQLite via SQLModel. Data model designed (`statements`, `transactions`, `corrections`). ADR committed at `docs/adr-002-persistence.md`. Implementation is BSA-19 (Sprint-04 P0).
+**Prompt:** `prompts/sprint-03/08-adr-persistence.md`
 
 ---
 
@@ -103,7 +102,7 @@ A row of plain-language callouts derived from the existing response. Highest per
 A directional view, not a commitment. Re-planned at each sprint kickoff.
 
 ### Sprint-04 — "Persistence + Longitudinal v1"
-Build the SQLite store (BSA-19). Statement dedup (TD-024). First longitudinal feature: month-over-month comparison (BSA-17). This is the sprint where the product stops being a stateless parser and starts being a financial picture.
+Build the SQLite store (**BSA-19 — P0**, design complete in ADR-002). Statement dedup (TD-024). First longitudinal feature: month-over-month comparison (BSA-17). This is the sprint where the product stops being a stateless parser and starts being a financial picture.
 
 ### Sprint-05 — "Intelligence on the History"
 True recurring/subscription detection across months (BSA-07). Budgets & alerts. Category-correction learning loop (BSA-16) now that there's somewhere to store corrections.
