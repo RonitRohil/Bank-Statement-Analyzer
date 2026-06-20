@@ -1,14 +1,13 @@
 """
-Regression tests for enrich_with_llm() — TD-033.
-
-Before the fix, item["index"] was used as an offset into batch_indices
-(double-indexing), causing categories to land on the wrong transaction
-or silently crash. These tests pin the correct behaviour.
+Tests for enrich_with_llm() — TD-033 (index fix), TD-035 (timeout budget + batch cap).
 """
 
+import asyncio
 import json
 import pytest
 import httpx
+
+from unittest.mock import patch
 
 from app.services.llm_enricher import enrich_with_llm
 
@@ -130,3 +129,79 @@ async def test_ollama_down_returns_transactions_unchanged(monkeypatch):
     assert result is transactions
     assert result[1]["category"] == []
     assert result[3]["category"] == []
+
+
+# ── TD-035: global timeout budget ──────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_global_timeout_returns_partial_enrichment(monkeypatch):
+    """When the LLM takes longer than llm_total_timeout_s the call must still
+    return (no exception raised) with whatever was enriched so far."""
+    transactions = _make_transactions()
+
+    async def mock_post(self, url, **kwargs):
+        await asyncio.sleep(5)  # longer than the 0.05 s budget below
+        return _ollama_response([])
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
+
+    with patch("app.services.llm_enricher.settings") as mock_settings:
+        mock_settings.ollama_base_url = "http://localhost:11434"
+        mock_settings.ollama_model = "qwen2.5:7b"
+        mock_settings.llm_total_timeout_s = 0.05
+        mock_settings.llm_max_enriched = 100
+
+        result = await enrich_with_llm(transactions)
+
+    # Must return without raising; uncategorized rows stay empty (partial = zero here)
+    assert result is transactions
+    assert result[1]["category"] == []
+    assert result[3]["category"] == []
+
+
+# ── TD-035: batch cap ──────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_batch_cap_limits_enriched_count(monkeypatch):
+    """With llm_max_enriched=5, at most 5 of 15 uncategorized rows are enriched."""
+    transactions = [
+        {"narration": f"TXN {i}", "category": [], "merchant": None} for i in range(15)
+    ]
+    enriched_indices: list[int] = []
+
+    async def mock_post(self, url, **kwargs):
+        payload = json.loads(kwargs["json"]["messages"][1]["content"])
+        results = [
+            {"index": item["index"], "category": "Other", "merchant": None}
+            for item in payload
+        ]
+        enriched_indices.extend(item["index"] for item in payload)
+        return _ollama_response(results)
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
+
+    with patch("app.services.llm_enricher.settings") as mock_settings:
+        mock_settings.ollama_base_url = "http://localhost:11434"
+        mock_settings.ollama_model = "qwen2.5:7b"
+        mock_settings.llm_total_timeout_s = 30.0
+        mock_settings.llm_max_enriched = 5
+
+        result = await enrich_with_llm(transactions)
+
+    enriched_count = sum(1 for t in result if t.get("llm_enriched"))
+    assert enriched_count <= 5
+
+
+# ── CR-S2-08: unified taxonomy ─────────────────────────────────────────────────
+
+def test_regex_and_llm_categories_normalize_to_same_label():
+    """FOOD_DELIVERY (regex code) and 'Food & Dining' (LLM label) must map to the
+    same canonical label so per-category summaries group them together."""
+    from app.services.categories import REGEX_TO_CANONICAL, CANONICAL_CATEGORIES
+
+    regex_canonical = REGEX_TO_CANONICAL["FOOD_DELIVERY"]
+    llm_label = "Food & Dining"
+
+    assert regex_canonical == llm_label
+    assert llm_label in CANONICAL_CATEGORIES
+    assert REGEX_TO_CANONICAL["E-COMMERCE"] == "Shopping"

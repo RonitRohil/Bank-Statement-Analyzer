@@ -1,6 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -13,6 +14,15 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Bank Statement Analyzer v2 started on port 8000")
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            await client.get(f"{settings.ollama_base_url}/v1/models")
+        logger.info("[startup] Ollama reachable at %s", settings.ollama_base_url)
+    except Exception:
+        logger.warning(
+            "[startup] Ollama not reachable at %s — LLM enrichment will be skipped",
+            settings.ollama_base_url,
+        )
     yield
 
 

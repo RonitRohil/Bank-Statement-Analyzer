@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     debug: bool = False
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:7b"
+    llm_total_timeout_s: float = 30.0
+    llm_max_enriched: int = 100
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
