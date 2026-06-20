@@ -6,12 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Bank Statement Analyzer** is a full-stack application for parsing and analyzing bank statements (PDF, Excel, CSV). Users upload files through a React frontend; the backend extracts and enriches transactions with metadata (payment method, merchant, category, confidence scores), and returns structured JSON for visualization in an interactive dashboard.
 
-- **Backend (v1 — deprecated)**: Flask 3.1.2 on port 5000 — scheduled for removal Sprint-03
-- **Backend (v2 — active)**: FastAPI 0.115 on port 8000 — async, Pydantic v2, Swagger UI; all endpoints ported; frontend now points here
+- **Backend (v1 — deprecated)**: Flask 3.1.2 on port 5000 — scheduled for removal Sprint-03 (BSA-18)
+- **Backend (v2 — active)**: FastAPI 0.115 on port 8000 — async, Pydantic v2, Swagger UI; all endpoints ported; frontend points here
 - **Frontend**: React 19 + TypeScript + Vite, data visualization with Recharts
-- **Key Features**: Multi-format document parsing, narration analysis (UPI, IMPS, NEFT, card payments), merchant insights, confidence scoring, account metadata extraction
+- **Key Features**: Multi-format document parsing, narration analysis (UPI, IMPS, NEFT, card payments), merchant insights, confidence scoring, account metadata extraction, **LLM categorization fallback (BSA-04)**, **financial summary endpoint (BSA-05)**
 
-**Migration status (BSA-09 complete):** Frontend now points to FastAPI (port 8000). Flask (port 5000) kept for one sprint as rollback; removal scheduled Sprint-03.
+**Migration status (post-Sprint-02, 2026-06-20):** Frontend points to FastAPI (port 8000). Flask (port 5000) kept one sprint as rollback; deletion is Sprint-03 (BSA-18). Sprint-02 shipped BSA-04 (LLM categorization via Ollama), BSA-05 (summary endpoint), BSA-10 (FastAPI tests), and TD-021 (multi-page PDF fix).
+
+> ⚠️ **Two Sprint-02 features shipped with known fast-follow defects — read before touching them.** **TD-033 (🔴):** `backend-v2/app/services/llm_enricher.py` double-indexes results onto the wrong transaction (`batch_indices[item["index"]]` where `item["index"]` is already the global index), masked by a catch-all `except`, so BSA-04 silently no-ops. **TD-037 (🟠):** stale `localhost:5000` strings remain in `frontend/App.tsx` + `services/api.ts` after the port-8000 cutover. Plus TD-034/035/036/038. Fixes are sequenced in `docs/prompts/sprint-03/`. See `docs/code-review.md` and `docs/tech-debt.md`.
 
 ## Development Setup
 
@@ -125,10 +127,12 @@ Frontend dashboard
 | Entry Point | run.py                 | Starts uvicorn on port 8000                                                                   |
 | App Init    | app/main.py            | FastAPI app, CORS middleware, router registration                                             |
 | Router      | app/routers/health.py  | GET /api/health                                                                               |
-| Router      | app/routers/analyze.py | POST /api/analyze/bank/statement (async, to_thread)                                           |
+| Router      | app/routers/analyze.py | POST /api/analyze/bank/statement (async, to_thread); calls the LLM enricher                   |
+| Router      | app/routers/summary.py | POST /api/analyze/bank/summary (sync; pure-math financial summary) — BSA-05                    |
+| Service     | app/services/llm_enricher.py | enrich_with_llm() — Ollama category fallback for category=[] rows — BSA-04 (⚠️ TD-033)   |
 | Model       | app/models/analyzer.py | BankStatementAnalyzer + TransactionPatternTrainer (copied from Flask, Flask imports stripped) |
-| Schemas     | app/models/schemas.py  | Pydantic v2 models: Transaction, AccountInfo, AnalysisResult, AnalyzeResponse                 |
-| Config      | app/config/settings.py | pydantic-settings: cors_origins, max_upload_size_mb, debug                                    |
+| Schemas     | app/models/schemas.py  | Pydantic v2 models: Transaction, AccountInfo, AnalysisResult, AnalyzeResponse, SummaryResponse |
+| Config      | app/config/settings.py | pydantic-settings: cors_origins, max_upload_size_mb, debug, ollama_base_url, ollama_model      |
 
 ### Core Classes in analyzeModel.py
 
@@ -304,15 +308,25 @@ For each unique merchant (or receiver if merchant not found):
 
 **Open:**
 
-1. **Single Synchronous Flask Endpoint**: Large PDFs still block the Flask v1 worker thread. FastAPI v2 solves this via `asyncio.to_thread()` — migrate frontend to port 8000 (BSA-09) to close this.
+1. **LLM enricher index bug (TD-033 🔴)**: `llm_enricher.py` maps results with `batch_indices[item["index"]]` — a double-index that makes BSA-04 silently enrich nothing. Fix first (`docs/prompts/sprint-03/01-llm-enricher-fix.md`).
 
-2. **No Authentication**: Both backends have fully public endpoints. No auth layer planned until user accounts are in scope.
+2. **Enrichment not reflected in aggregates (TD-034)**: `merchant_insights`/`confidence_summary` are computed before `enrich_with_llm()` runs, so LLM-filled merchants/categories never reach them.
 
-3. **PDF Limitations**: Scanned (image-based) PDFs fail silently; only works with digital/table-based PDFs. Needs OCR (Tesseract or Azure) to fix.
+3. **Enrichment unbounded/blocking (TD-035)**: sequential 60s batches awaited inline; no global deadline. 200 uncategorized rows → minutes.
 
-4. **No Balance Validation**: Running balance not validated against credit/debit deltas; inconsistent data passes through undetected.
+4. **Summary endpoint untyped input (TD-036)**: `summary.py` takes `list[dict]`; a bad `amount` → 500. Reuse the `Transaction` schema.
 
-5. **uploads/ path is process-relative**: FastAPI creates `uploads/` relative to the CWD at launch time. Always launch from `backend-v2/`.
+5. **Stale frontend URL strings (TD-037)**: `App.tsx`/`api.ts` still say `localhost:5000` in error text + env fallback after the port-8000 cutover.
+
+6. **BSA-04/05 have no UI (TD-038)**: `llm_enriched` isn't in `types.ts`; nothing renders the summary endpoint. Both features ship invisible.
+
+7. **No Authentication**: Both backends have fully public endpoints. No auth layer planned until user accounts are in scope.
+
+8. **PDF Limitations**: Scanned (image-based) PDFs fail silently; only works with digital/table-based PDFs. Needs OCR (Tesseract or Azure) to fix.
+
+9. **No Balance Validation**: Running balance not validated against credit/debit deltas; inconsistent data passes through undetected.
+
+> The Flask synchronous-endpoint and cwd-relative `uploads/` issues are resolved: FastAPI uses `asyncio.to_thread()` (frontend cut over via BSA-09) and `UPLOAD_DIR` is now file-anchored (TD-032).
 
 ## Common Development Tasks
 
@@ -363,7 +377,17 @@ Test files in `backend/tests/`: `test_parse_amount.py`, `test_normalize_date.py`
 
 **Known xfail:** UPI structured match returns early before merchant detection — `UPI/.../AMAZON PAY/...` yields `merchant=None`. Marked `@pytest.mark.xfail` in `test_narration.py` pending a fix.
 
-There are currently no tests for the FastAPI backend or the React frontend.
+### Integration Tests (pytest + httpx — FastAPI backend)
+
+```bash
+cd backend-v2
+pytest -m "not integration"     # 7 in-process ASGI tests — no live server needed
+pytest                          # also runs test_parity.py (needs both backends running)
+```
+
+`backend-v2/tests/`: `test_health.py`, `test_analyze.py`, `test_parity.py` (gated behind the `integration` marker, removed when Flask is deleted). Client fixture via `ASGITransport` in `backend-v2/conftest.py`.
+
+**Coverage gaps (see `docs/testing-strategy.md`):** no test exercises `llm_enricher.py` (TD-033) or `summary.py` (TD-036) yet, and the frontend has no test suite. The testing strategy doc is the reference for what to add and where — Vitest + React Testing Library for the frontend, plus a CI workflow that also guards `requirements.txt` encoding (TD-001).
 
 ### Manual / cURL
 
@@ -491,13 +515,20 @@ Every change — no matter how small — must be accompanied by documentation:
 docs/
   architecture.md          ← System architecture (keep updated)
   system-design.md         ← Design recommendations
-  tech-debt.md             ← Prioritized backlog (mark items done as they ship)
-  code-review.md           ← Code review findings
+  tech-debt.md             ← Prioritized backlog (TD-001…TD-038; mark items done as they ship)
+  code-review.md           ← Code review findings (current: Sprint-02 + frontend)
+  testing-strategy.md      ← Test pyramid, coverage gaps, CI plan
   requirements.md          ← Living requirements document
   changelog.md             ← Running log of all changes
-  adr-001-*.md             ← Architecture Decision Records
+  adr-001-flask-vs-fastapi.md   ← Architecture Decision Records
   ml-ai-brainstorm.md      ← ML/AI feature roadmap
+  feature-brainstorm.md    ← Post-Sprint-02 feature exploration (prioritized)
+  improvement-analysis.md  ← Roadmap prerequisites analysis
   sprint-01-plan.md        ← Sprint plans
+  sprint-02-plan.md
+  sprint-03-plan.md        ← Current sprint + rolling roadmap
+  prompts/                 ← Claude Code prompt files per sprint
+    sprint-02/  sprint-03/ ← run in numbered order
   study/                   ← Study documents per feature/sprint
     [feature-name].md
     sprint-[N]-learnings.md

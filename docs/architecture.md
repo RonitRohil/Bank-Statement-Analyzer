@@ -128,13 +128,24 @@ App.tsx
 ### Data Flow
 
 1. User drops/selects file → `FileUpload` calls `uploadBankStatement(file)`
-2. `services/api.ts` sends `multipart/form-data` POST to `http://localhost:5000/api/analyze/bank/statement`
+2. `services/api.ts` sends `multipart/form-data` POST to `${VITE_API_URL}/api/analyze/bank/statement` (FastAPI, port 8000 since BSA-09)
 3. On success, `AnalysisResult` stored in `App` state
 4. All child components receive data as props (no global state manager — correct for this scale)
 
 ### API Coupling
 
-The API base URL is hardcoded as `http://localhost:5000` in `services/api.ts`. There is no environment variable, making it impossible to point to a staging or production server without a code change.
+The API base URL is read from `VITE_API_URL` (`.env.local`), defaulting to FastAPI on port 8000. **Open issue (TD-037):** two error-message strings and the env fallback in `services/api.ts` / `App.tsx` still reference the deprecated `localhost:5000` — cosmetic but misleading post-cutover.
+
+### FastAPI Routers & Services (`backend-v2/app/`)
+
+| Layer | File | Purpose |
+|-------|------|---------|
+| Router | `routers/health.py` | `GET /api/health` |
+| Router | `routers/analyze.py` | `POST /api/analyze/bank/statement` (async, `to_thread`; calls LLM enricher) |
+| Router | `routers/summary.py` | `POST /api/analyze/bank/summary` (sync; pure math over a transactions array) — BSA-05 |
+| Service | `services/llm_enricher.py` | `enrich_with_llm()` — Ollama categorization fallback for `category=[]` rows — BSA-04 |
+| Model | `models/analyzer.py` | `BankStatementAnalyzer` + `TransactionPatternTrainer` (canonical copy once Flask is deleted, BSA-18) |
+| Schemas | `models/schemas.py` | Pydantic v2 models incl. `SummaryResponse`, `llm_enriched` flag |
 
 ---
 

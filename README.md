@@ -4,9 +4,11 @@
 
 This repository provides a complete bank statement analysis system. A React (TypeScript + Vite) frontend uploads statements to the backend, which extracts, normalizes, and enriches transactions from PDF, Excel, and CSV files.
 
-**Two backends run in parallel during an incremental Flask → FastAPI migration:**
-- `backend/` — Flask 3.1.2 on port 5000 (original, production-stable)
-- `backend-v2/` — FastAPI 0.115 on port 8000 (async, Pydantic v2, Swagger UI at `/docs`)
+**FastAPI is the active backend.** The Flask → FastAPI migration completed its frontend cutover in Sprint-02 (BSA-09):
+- `backend-v2/` — **FastAPI 0.115 on port 8000 — ACTIVE.** Async, Pydantic v2, Swagger UI at `/docs`. All new development happens here.
+- `backend/` — Flask 3.1.2 on port 5000 — **DEPRECATED.** Kept one sprint as a rollback; scheduled for deletion in Sprint-03 (BSA-18).
+
+> **Status (post-Sprint-02, 2026-06-20):** the frontend points at port 8000. Two backend-only features shipped — LLM categorization (BSA-04) and a financial summary endpoint (BSA-05) — and both have known fast-follow fixes open (see `docs/tech-debt.md`, TD-033/TD-037). Full close-out in `docs/sprint-03-plan.md`.
 
 The system detects:
 
@@ -69,7 +71,7 @@ Each transaction is scored based on:
 ```
 BANK-STATEMENT-ANALYZER/
 │
-├── backend/                        ← Flask v1 (port 5000)
+├── backend/                        ← Flask v1 (port 5000) — DEPRECATED (delete Sprint-03)
 │   ├── app/
 │   │   ├── config/
 │   │   ├── constants/
@@ -77,33 +79,38 @@ BANK-STATEMENT-ANALYZER/
 │   │   ├── models/analyzeModel.py
 │   │   ├── routes/routes.py
 │   │   └── __init__.py
-│   ├── tests/
+│   ├── tests/                      ← pytest (23 pass, 1 xfail)
 │   ├── requirements.txt
 │   └── run.py
 │
-├── backend-v2/                     ← FastAPI v2 (port 8000) — migration target
+├── backend-v2/                     ← FastAPI v2 (port 8000) — ACTIVE
 │   ├── app/
-│   │   ├── config/settings.py
+│   │   ├── config/settings.py      ← pydantic-settings (CORS, upload size, Ollama)
 │   │   ├── models/
-│   │   │   ├── analyzer.py         ← BankStatementAnalyzer (ported from Flask)
-│   │   │   └── schemas.py          ← Pydantic v2 response models
+│   │   │   ├── analyzer.py         ← BankStatementAnalyzer (canonical copy)
+│   │   │   └── schemas.py          ← Pydantic v2 models (incl. SummaryResponse)
 │   │   ├── routers/
-│   │   │   ├── health.py           ← GET /api/health
-│   │   │   └── analyze.py          ← POST /api/analyze/bank/statement
+│   │   │   ├── health.py           ← GET  /api/health
+│   │   │   ├── analyze.py          ← POST /api/analyze/bank/statement
+│   │   │   └── summary.py          ← POST /api/analyze/bank/summary  (BSA-05)
+│   │   ├── services/
+│   │   │   └── llm_enricher.py     ← LLM category fallback via Ollama (BSA-04)
 │   │   └── main.py
+│   ├── tests/                      ← httpx ASGI suite (7 tests)
 │   ├── requirements.txt
 │   └── run.py
 │
 ├── frontend/                       ← React + TypeScript (port 3000)
-│   ├── src/
-│   │   ├── components/
-│   │   ├── services/
-│   │   ├── App.tsx
-│   │   └── index.tsx
+│   ├── components/
+│   ├── services/api.ts
+│   ├── App.tsx
+│   ├── types.ts
+│   ├── index.html
 │   ├── package.json
-│   └── .env.local
+│   └── .env.local                  ← VITE_API_URL=http://localhost:8000
 │
-├── docs/                           ← Architecture, ADRs, changelog, study docs
+├── docs/                           ← Architecture, ADRs, changelog, study docs, sprint plans, prompts
+├── CLAUDE.md                       ← AI dev workflow + architecture reference
 ├── README.md
 └── .gitignore
 ```
@@ -111,7 +118,33 @@ BANK-STATEMENT-ANALYZER/
 
 ## 🛠 Backend Setup
 
-### Flask backend (v1 — port 5000)
+### FastAPI backend (v2 — port 8000) — ACTIVE
+
+``` bash
+cd backend-v2
+python -m venv venv
+venv\Scripts\activate           # Windows
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+
+Swagger UI at 👉 http://localhost:8000/docs
+
+Create `backend-v2/.env` (all optional — sensible defaults exist):
+```env
+CORS_ORIGINS=["http://localhost:3000"]
+MAX_UPLOAD_SIZE_MB=20
+UVICORN_RELOAD=true             # dev only
+# LLM categorization (BSA-04) — uses a local Ollama OpenAI-compatible endpoint
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=qwen2.5:7b
+```
+
+> **LLM enrichment is optional and best-effort.** If Ollama isn't running, the analyze endpoint still returns results — uncategorized transactions simply keep `category: []`.
+
+### Flask backend (v1 — port 5000) — DEPRECATED
+
+> Kept only as a Sprint-02 rollback; **scheduled for deletion in Sprint-03 (BSA-18).** New work should target FastAPI. Startup emits a `DeprecationWarning`.
 
 ``` bash
 cd backend
@@ -129,18 +162,6 @@ CORS_URLS=["http://localhost:3000"]
 FLASK_DEBUG=True
 ```
 
-### FastAPI backend (v2 — port 8000)
-
-``` bash
-cd backend-v2
-python -m venv venv
-venv\Scripts\activate           # Windows
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
-```
-
-Swagger UI at 👉 http://localhost:8000/docs
-
 ## 🎨 Frontend Setup (React + TypeScript)
 
 ### 1. Go to frontend folder
@@ -155,7 +176,7 @@ npm install
 
 ### 3. Create .env.local
 ``` bash
-VITE_API_URL=http://localhost:5000
+VITE_API_URL=http://localhost:8000
 ```
 
 ### 4. Run frontend
@@ -166,19 +187,30 @@ npm run dev
 Frontend will start at:
 👉 http://localhost:3000
 
-## 📡 API Endpoint
-POST /api/analyze
+## 📡 API Endpoints
 
-### Form-Data:
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| `GET`  | `/api/health` | Liveness check — `{"status": "ok", "service": "bank-statement-analyzer"}` |
+| `POST` | `/api/analyze/bank/statement` | Upload a PDF/Excel/CSV → parsed + enriched transactions |
+| `POST` | `/api/analyze/bank/summary` | Send a `transactions` array → income/expense/net, per-category spend, top merchants (BSA-05) |
+
+### POST /api/analyze/bank/statement — Form-Data
 
 | Key         | Type   | Required | Description   |
 | ----------- | ------ | -------- | ------------- |
 | file        | File   | Yes      | PDF/Excel/CSV |
 
 ### cURL
-``` c
-curl --location 'http://localhost:5000/api/analyze/bank/statement' \
---form 'file=@"/C:/Users/ronit/Downloads/SBI CSR HUDCO.xls.xlsx"'
+``` bash
+# Analyze a statement (FastAPI — port 8000)
+curl --location 'http://localhost:8000/api/analyze/bank/statement' \
+--form 'file=@"/path/to/statement.xlsx"'
+
+# Financial summary from the transactions array
+curl --location 'http://localhost:8000/api/analyze/bank/summary' \
+--header 'Content-Type: application/json' \
+--data '{"transactions": [ /* the array from the analyze response */ ]}'
 ```
 
 ### Example Response
@@ -332,16 +364,26 @@ curl --location 'http://localhost:5000/api/analyze/bank/statement' \
 
 ## 🚧 Roadmap
 
-**In progress:**
-- FastAPI migration (backend-v2) — analyze endpoint ported; frontend cutover pending
-- ML/LLM transaction categorization (BSA-04)
+**Done (Sprint-01 / Sprint-02):**
+- FastAPI migration (backend-v2) — analyze endpoint ported, frontend cut over to port 8000 (BSA-09)
+- FastAPI integration test suite (BSA-10)
+- LLM transaction categorization fallback via Ollama (BSA-04) — *fast-follow fixes open, TD-033*
+- Financial summary endpoint (BSA-05)
+- Multi-page PDF row stitching fix (TD-021)
 
-**Planned:**
-- LLM-powered insights via Claude API (streaming SSE)
+**Sprint-03 (next):**
+- Fix the LLM enricher + surface BSA-04/05 in the UI (summary card, AI badge)
+- Delete the deprecated Flask backend (BSA-18)
+- Smart stats-based insights strip (BSA-15)
+- Decide & design a persistence layer (ADR-002 — SQLite/SQLModel)
+
+**Later:**
+- Month-over-month comparison, recurring/subscription detection, natural-language Q&A (need persistence)
 - OCR for scanned PDFs (Tesseract / Azure Vision)
 - Export to CSV/Excel
-- User authentication
 - Balance validation (detect gaps in running balance)
+
+> Full plan: `docs/sprint-03-plan.md` · Feature exploration: `docs/feature-brainstorm.md`
 
 ## 👨‍💻 Author
 
