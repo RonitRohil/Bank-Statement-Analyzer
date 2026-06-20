@@ -15,8 +15,8 @@ React 19 + TypeScript + Vite dashboard for uploading and visualizing bank statem
 ```bash
 npm install
 
-# Create .env.local
-VITE_API_URL=http://localhost:5000   # or http://localhost:8000 for FastAPI
+# Create .env.local — points at the active FastAPI backend
+VITE_API_URL=http://localhost:8000
 
 npm run dev     # http://localhost:3000
 npm run build   # outputs to dist/
@@ -25,29 +25,32 @@ npm run preview # preview production build
 
 ## Structure
 
+Components live at the project root (no `src/` directory):
+
 ```
-src/
-  App.tsx                  ← root; manages analysis state, layout
-  types.ts                 ← AccountInfo, Transaction, AnalysisResult, ApiResponse
-  services/api.ts          ← uploadBankStatement(file) — POST to VITE_API_URL
-  components/
-    FileUpload.tsx          ← drag-drop + click; loading state; error alerts
-    AccountOverview.tsx     ← bank details, account holder, confidence %, period
-    AnalyticsCharts.tsx     ← balance history (line), income/expense (bar), merchants (pie)
-    MerchantInsights.tsx    ← merchant table: count, avg/median amount, frequency
-    TransactionTable.tsx    ← searchable list with date, narration, method, amount, balance
-    ErrorBoundary.tsx       ← per-section error boundary
-  index.tsx                ← React 19 DOM entry
+App.tsx                  ← root; manages analysis state, layout
+types.ts                 ← AccountInfo, Transaction, AnalysisResult, ApiResponse
+services/api.ts          ← uploadBankStatement(file) — POST to ${VITE_API_URL}
+index.html               ← Vite entry
+components/
+  FileUpload.tsx          ← drag-drop + click; loading state; error alerts
+  AccountOverview.tsx     ← bank details, account holder, confidence %, period
+  AnalyticsCharts.tsx     ← balance history (line), income/expense (bar), merchants (pie)
+  MerchantInsights.tsx    ← merchant table: count, avg/median amount, frequency
+  TransactionTable.tsx    ← list with date, narration, method, amount, balance, type
+  ErrorBoundary.tsx       ← per-section error boundary
 ```
 
 No global state manager — all data flows top-down via props from `App.tsx`.
 
-## Switching backends
+## Backend
 
-To point at the FastAPI backend (port 8000), update `.env.local`:
+The app targets the **FastAPI backend on port 8000** via `VITE_API_URL`. The deprecated Flask backend (port 5000) is being removed in Sprint-03; don't point at it.
 
-```env
-VITE_API_URL=http://localhost:8000
-```
+## Known issues (open)
 
-Both backends expose the same `POST /api/analyze/bank/statement` endpoint with identical JSON response shapes.
+- **TD-037:** two network-error messages and the env fallback still mention `localhost:5000` — cosmetic but misleading post-cutover. Fix: centralize on an exported `API_BASE` (default 8000).
+- **TD-038:** the backend now exposes `POST /api/analyze/bank/summary` (income/expense/net, top categories/merchants) and a `llm_enriched` flag on transactions, but **neither is rendered yet**. A summary card + an "AI-categorized" badge are planned for Sprint-03 (BSA-12).
+- **TD-018:** `TransactionTable` renders every row (no virtualization) — add pagination before large/multi-statement data lands.
+
+See `docs/code-review.md` and `docs/tech-debt.md` for detail.

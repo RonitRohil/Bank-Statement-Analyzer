@@ -1,6 +1,6 @@
 # Technical Debt Report — Bank Statement Analyzer
 
-**Original:** 2026-05-29 · **Updated:** 2026-06-13  
+**Original:** 2026-05-29 · **Updated:** 2026-06-20 (post-Sprint-02)  
 **Reviewed by:** Claude (Cowork)  
 **Project:** Bank Statement Analyzer (Flask + FastAPI/React/TypeScript)
 
@@ -9,15 +9,15 @@ Status: ✅ Resolved · ⚠️ Reopened · ⬜ Open
 
 ---
 
-## Status Snapshot (post-Sprint-01)
+## Status Snapshot (post-Sprint-02)
 
 | Resolved ✅ | Open ⬜ | Reopened ⚠️ |
 |------------|---------|-------------|
-| TD-002–006, 009–015, 017, 020, 021, 022, 027 | TD-007, 008, 018, 019, 023–026, 028–032 | TD-001, TD-016 |
+| TD-002–006, 009–015, 017, 020, 021, 022, 027, 028, 029, 030, 031, 032 | TD-007, 008, 018, 019, 023–026, 033–038 | TD-001 |
 
-**15 resolved, 14 open (5 carried + 5 FastAPI-new), 2 tracked special**
+**21 resolved, 14 open (6 carried + 6 Sprint-02-new + TD-001 watch), TD-016 now folded into TD-031 (resolved)**
 
-> TD-001 was re-encoded this sprint (again). TD-016 was partially resolved — pytest exists for Flask only; FastAPI tests logged as TD-031.
+> Sprint-02 closed the four FastAPI housekeeping items (TD-028/029/030/032), the multi-page PDF data-loss bug (TD-021), and the FastAPI test gap (TD-031, which also resolves TD-016). Six **new** items (TD-033–TD-038) were opened against the two new features (BSA-04 LLM enricher, BSA-05 summary) and the frontend cutover — see "Sprint-02 New Debt" below. TD-001 (requirements UTF-16) remains on watch pending a CI guard.
 
 ---
 
@@ -46,16 +46,11 @@ uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=reload)
 
 ---
 
-### TD-031 ⬜ 🟠 Zero integration tests for FastAPI routes
-**Files:** `backend-v2/` (no `tests/` directory)  
+### TD-031 ✅ 🟠 Zero integration tests for FastAPI routes — **FIXED 2026-06-19 (BSA-10)**
+**Files:** `backend-v2/conftest.py`, `backend-v2/tests/`  
 **Score:** Impact 5 · Risk 5 · Effort 3 → **Priority 30**  
-**Description:** The pytest suite in `backend/tests/` covers Flask only. FastAPI's `/api/health` and `/api/analyze/bank/statement` have no tests. This means: (1) BSA-09 (Flask cutover) has no parity baseline — we can't prove the two backends return the same shape; (2) any regression in the FastAPI route (response model mismatch, CORS breakage, auth middleware in future) goes undetected.  
-**What's needed:**
-- `backend-v2/tests/test_health.py` — GET `/api/health` returns 200 + correct JSON
-- `backend-v2/tests/test_analyze.py` — POST with fixture CSV + PDF; assert response shape matches `AnalyzeResponse`; assert 400 on bad extension; assert 413 on oversized file
-- `backend-v2/tests/test_parity.py` — send same file to both Flask (port 5000) and FastAPI (port 8000), diff JSON shape (not values)
-- Tool: `httpx.AsyncClient` with `pytest-asyncio`  
-**Effort:** 3–4 hours.
+**Fix:** Added 7 in-process tests via `httpx.AsyncClient` over `ASGITransport` (no live server needed): `test_health.py` (2), `test_analyze.py` (5 — CSV upload, response shape, 400 bad extension, 413 oversize, required fields). `test_parity.py` diffs Flask/FastAPI shape and is fenced behind an `integration` marker (excluded from default CI). `pyproject.toml` set `asyncio_mode = "auto"`. **Result:** 7 passed, 0 warnings. This also resolves the remaining half of TD-016.  
+**Remaining gap (logged separately):** no test exercises the LLM enricher (TD-033) or the summary endpoint (TD-036).
 
 ---
 
@@ -114,11 +109,52 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 ---
 
+## Sprint-02 New Debt (opened 2026-06-20)
+
+These were logged against the two new features and the cutover. Source: `docs/code-review.md` (Sprint-02 review).
+
+### TD-033 ⬜ 🔴 LLM enricher double-indexes results onto the wrong transaction
+**File:** `backend-v2/app/services/llm_enricher.py` line 106  
+**Score:** Impact 5 · Risk 5 · Effort 1 → **Priority 50**  
+**Description:** `txn_index = batch_indices[item["index"]]` treats the model-returned **global** index as a **batch offset**. Result is either `IndexError` (swallowed by the catch-all → enrichment silently does nothing) or a category written to the wrong transaction. BSA-04 currently never enriches anything. **Map directly: `txn_index = item["index"]` with a bounds check.** Add a unit test. **Fix before exposing BSA-04 to any user.**  
+**Effort:** 30 min code + 30 min test.
+
+### TD-034 ⬜ 🟠 Enrichment runs after aggregates are computed
+**Files:** `backend-v2/app/routers/analyze.py`, `analyzer.py`  
+**Score:** Impact 4 · Risk 3 · Effort 2 → **Priority 24**  
+**Description:** `merchant_insights` and `confidence_summary` are built inside `extract_transactions()` before `enrich_with_llm()` mutates the transactions. LLM-filled merchants/categories never reach the aggregates the frontend charts. Enrich first, then aggregate (or recompute aggregates post-enrichment). Becomes user-visible once TD-033 is fixed.  
+**Effort:** 1–2 hours.
+
+### TD-035 ⬜ 🟠 LLM enrichment is unbounded and blocks the request
+**Files:** `backend-v2/app/services/llm_enricher.py`, `analyze.py`  
+**Score:** Impact 3 · Risk 4 · Effort 2 → **Priority 24**  
+**Description:** Sequential batches × 60 s timeout each, awaited inline, no global deadline or batch cap. 200 uncategorized rows → up to a 20-minute request. Add a wall-clock budget (`asyncio.wait_for`), cap enriched rows per request, optionally fire batches concurrently with a `Semaphore`.  
+**Effort:** 1–2 hours.
+
+### TD-036 ⬜ 🟠 Summary endpoint accepts untyped `list[dict]`
+**File:** `backend-v2/app/routers/summary.py`  
+**Score:** Impact 3 · Risk 3 · Effort 1 → **Priority 30**  
+**Description:** `SummaryRequest.transactions: list[dict[str, Any]]` bypasses Pydantic. `amount: "1,200"` → `float()` ValueError → unhandled 500. Reuse the existing `Transaction` schema so validation happens at the boundary. Add a summary unit test on a known fixture.  
+**Effort:** 30 min.
+
+### TD-037 ⬜ 🟠 Stale `localhost:5000` strings in frontend after cutover
+**Files:** `frontend/App.tsx` line 35, `frontend/services/api.ts` lines 3 + 22  
+**Score:** Impact 3 · Risk 2 · Effort 1 → **Priority 20**  
+**Description:** Two user-facing error messages and the env fallback still reference port 5000 (deprecated Flask). Post-BSA-09 the app talks to 8000; a backend-down user is pointed at the wrong port, and a missing env var silently targets the soon-to-be-deleted backend. Centralize on `API_BASE` (default 8000) and interpolate it into all error strings.  
+**Effort:** 20 min.
+
+### TD-038 ⬜ 🟡 BSA-04 / BSA-05 have no frontend surface
+**Files:** `frontend/types.ts`, `frontend/services/api.ts`, dashboard components  
+**Score:** Impact 3 · Risk 1 · Effort 3 → **Priority 12**  
+**Description:** `llm_enriched` isn't in the TS types and nothing renders it; there's no `getSummary()` call or summary panel. Both Sprint-02 features ship invisible. Wire them in Sprint-03 (a "Spending Summary" card + an "AI-categorized" badge) or explicitly defer as a logged decision.  
+**Effort:** 3–4 hours (frontend).
+
+---
+
 ## Priority 3 — Improve When Possible
 
-### TD-016 ⚠️ pytest exists for Flask only — FastAPI coverage is zero
-**Status:** Partially resolved (Flask pytest added TD-016 in Sprint-01). FastAPI coverage tracked as TD-031 above.  
-**Remaining:** Add `backend-v2/tests/` with httpx-based async tests.
+### TD-016 ✅ Folded into TD-031
+**Status:** Resolved. Flask pytest (Sprint-01) + FastAPI httpx suite (BSA-10) together close this. No separate remaining work.
 
 ---
 
@@ -181,32 +217,33 @@ This item stays in the backlog until that guard exists.
 
 ## Prioritized Action Plan
 
-### Sprint-02 P0 (fix in first 2 hours)
+### Sprint-03 P0 — "Make Sprint-02's features actually work" (fix first)
 
 | ID | Fix | Est. |
 |----|-----|------|
-| TD-028 | `reload=True` → env-controlled | 5 min |
-| TD-029 | Delete `import requests` + dep | 5 min |
-| TD-030 | CORS wildcards → explicit lists | 5 min |
-| TD-032 | `UPLOAD_DIR` → file-relative path | 5 min |
+| TD-033 | LLM enricher index bug + bounds check + unit test | 1h |
+| TD-037 | Stale `localhost:5000` strings → centralize on `API_BASE` | 20 min |
+| TD-036 | Type the summary endpoint input (reuse `Transaction`) | 30 min |
+| TD-034 | Aggregate after enrichment (consistency) | 1–2h |
+| TD-035 | Bound enrichment time / batch count | 1–2h |
 
-These four are all 1-liner fixes that belong in a single "FastAPI housekeeping" commit.
-
-### Sprint-02 P1 (functional value)
+### Sprint-03 P1 (value + robustness)
 
 | ID | Fix | Est. |
 |----|-----|------|
-| TD-031 | FastAPI integration tests (httpx) | 3–4h |
-| TD-024 | Transaction deduplication | 1–2h |
+| TD-038 | Wire BSA-04/05 into the UI (summary card + AI badge) | 3–4h |
+| TD-024 | Transaction deduplication (now higher risk post-TD-021) | 1–2h |
+| TD-023 | Magic-byte upload validation | 1–2h |
 
-### Sprint-02/03 (architectural)
+### Sprint-03/04 (architectural)
 
 | ID | Fix | Est. |
 |----|-----|------|
 | TD-007 | Split monolithic analyzer | 4–6h |
 | TD-008 | Extract shared column detection | paired with TD-007 |
 | TD-019 | Docker + compose | 2h |
-| TD-023 | Magic-byte upload validation | 1–2h |
+| TD-018 | TransactionTable virtualization | 2–3h |
+| TD-001 | CI guard for requirements.txt encoding | 30 min |
 
 ---
 
@@ -229,7 +266,7 @@ These four are all 1-liner fixes that belong in a single "FastAPI housekeeping" 
 | TD-013 | ✅ | 🟡 | Backend | Double assignment fixed |
 | TD-014 | ✅ | 🟡 | Backend | Dead vars removed |
 | TD-015 | ✅ | 🟡 | Backend | PDF confidence_score added |
-| TD-016 | ⚠️ Partial | 🟠 | Testing | Flask pytest done; FastAPI tests → TD-031 |
+| TD-016 | ✅ | 🟠 | Testing | Folded into TD-031 (Flask + FastAPI suites both exist) |
 | TD-017 | ✅ | 🟡 | Backend | CORS default tightened (Flask) |
 | TD-018 | ⬜ | 🟡 | Frontend | Table renders all rows |
 | TD-019 | ⬜ | 🟢 | Infra | No Docker |
@@ -244,8 +281,14 @@ These four are all 1-liner fixes that belong in a single "FastAPI housekeeping" 
 | TD-028 | ✅ | 🔴 | FastAPI | reload=True hardcoded in run.py |
 | TD-029 | ✅ | 🔴 | FastAPI | Dead `import requests` + dep in requirements |
 | TD-030 | ✅ | 🟠 | FastAPI | CORS wildcards with allow_credentials=True |
-| TD-031 | ⬜ | 🟠 | FastAPI | Zero integration tests for FastAPI routes |
+| TD-031 | ✅ | 🟠 | FastAPI | FastAPI integration tests added (BSA-10) |
 | TD-032 | ✅ | 🟡 | FastAPI | UPLOAD_DIR is cwd-relative, not file-relative |
+| TD-033 | ⬜ | 🔴 | FastAPI/LLM | Enricher double-indexes results onto wrong txn |
+| TD-034 | ⬜ | 🟠 | FastAPI/LLM | Enrichment runs after aggregates computed |
+| TD-035 | ⬜ | 🟠 | FastAPI/LLM | Enrichment unbounded; blocks request |
+| TD-036 | ⬜ | 🟠 | FastAPI | Summary endpoint accepts untyped list[dict] |
+| TD-037 | ⬜ | 🟠 | Frontend | Stale localhost:5000 strings after cutover |
+| TD-038 | ⬜ | 🟡 | Frontend | BSA-04/05 have no UI surface |
 
 ---
 

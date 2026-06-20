@@ -5,6 +5,22 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-20 — Sprint-02 close-out: review, tech-debt, testing strategy, study, Sprint-03 plan
+
+**Type:** Documentation / review (Cowork session — no code changes)
+**Decision:** Reviewed everything Sprint-02 shipped (BSA-04/05/09/10, TD-021, parser/UI polish), including a full frontend pass, and produced the close-out documentation set.
+**Findings (two real defects discovered, logged as tech debt):**
+
+- **TD-033 (🔴):** `llm_enricher.py` line 106 double-indexes — `batch_indices[item["index"]]` treats the model-returned global index as a batch offset. Masked by the catch-all `except`, so **BSA-04 currently silently enriches nothing**. Fix-before-exposing.
+- **TD-037 (🟠):** `App.tsx`/`api.ts` still show `localhost:5000` in error text and the env fallback after the BSA-09 cutover to port 8000.
+- Plus TD-034 (enrichment runs after aggregates are computed), TD-035 (unbounded/blocking enrichment), TD-036 (summary endpoint untyped input), TD-038 (BSA-04/05 have no UI), and CR-S2-08 (two divergent category taxonomies).
+
+**Also:** closed TD-021, TD-028/029/030/032, TD-031 (which folds in TD-016) in the register.
+**Impact:** Sprint-03 P0 is "finish Sprint-02" — make the two shipped features actually work and visible — then delete Flask and design persistence (ADR-002).
+**Files affected (docs only):** `docs/code-review.md` (rewritten for Sprint-02 + frontend), `docs/tech-debt.md` (TD-033–038 added; TD-021/028–032/031 closed), `docs/testing-strategy.md` (new), `docs/study/sprint-02-learnings.md` (new), `docs/feature-brainstorm.md` (new), `docs/sprint-03-plan.md` (new), `docs/prompts/sprint-03/00–08` (new/rewritten), `docs/architecture.md` (summary endpoint + services layer), `docs/changelog.md`
+
+---
+
 ## 2026-06-19 — TD-021: Fix silent data loss on multi-page PDF tables
 
 **Type:** Bug fix (data loss)
