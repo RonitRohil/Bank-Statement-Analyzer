@@ -42,9 +42,16 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                   )}
                 </td>
                 <td className="px-6 py-4">
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">
-                    {txn.payment_method || 'OTH'}
-                  </span>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">
+                      {txn.payment_method || 'OTH'}
+                    </span>
+                    {txn.llm_enriched && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold bg-violet-100 text-violet-700">
+                        AI
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className={`px-6 py-4 text-right font-bold ${
                   txn.transaction_type === 'CREDIT' ? 'text-emerald-600' : 'text-rose-600'

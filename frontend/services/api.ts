@@ -1,4 +1,4 @@
-import { ApiResponse } from "../types";
+import { ApiResponse, SummaryResponse, Transaction } from "../types";
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 const API_URL = `${API_BASE}/api/analyze/bank/statement`;
@@ -63,4 +63,14 @@ export const uploadBankStatement = async (file: File): Promise<ApiResponse> => {
     // Propagate the specific error message to the UI
     throw error;
   }
+};
+
+export const getSummary = async (transactions: Transaction[]): Promise<SummaryResponse> => {
+  const res = await fetch(`${API_BASE}/api/analyze/bank/summary`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ transactions }),
+  });
+  if (!res.ok) throw new Error(`Summary failed: ${res.status}`);
+  return res.json();
 };

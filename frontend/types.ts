@@ -36,15 +36,16 @@ export interface ReceiverDetails {
 
 export interface Transaction {
   account: string | null;
-  amount: number;
-  balance: number;
+  amount: number | null;
+  balance: number | null;
   bank_peer: string | null;
   category: string[];
   confidence_score: number;
+  llm_enriched?: boolean;
   merchant: string | null;
   narration: string;
   payment_gateway: string | null;
-  payment_method: string | null; // e.g., "IMPS", "CHEQUE"
+  payment_method: string | null;
   receiver_details: ReceiverDetails;
   remarks: string[];
   transaction_date: string;
@@ -65,4 +66,29 @@ export interface ApiResponse {
   result: AnalysisResult;
   status_code: number;
   success: number;
+}
+
+export interface CategoryBreakdown {
+  category: string;
+  count: number;
+  percentage: number;
+  total: number;
+}
+
+export interface TopMerchant {
+  count: number;
+  merchant: string;
+  total: number;
+}
+
+export interface SummaryResponse {
+  avg_transaction_amount: number;
+  by_category: CategoryBreakdown[];
+  currency: string;
+  date_range?: { from: string | null; to: string | null };
+  net: number;
+  top_merchants: TopMerchant[];
+  total_expenses: number;
+  total_income: number;
+  transaction_count: number;
 }
