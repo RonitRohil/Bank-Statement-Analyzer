@@ -1,150 +1,186 @@
 # Code Review — Bank Statement Analyzer
 
 **Reviewed by:** Claude (Cowork)  
-**Current review:** Sprint-03 (TD-033/034/035/036/037, CR-S2-08, BSA-12/15/18, ADR-002)  
-**Review date:** 2026-06-20  
-**Scope:** LLM enricher refactor + bounded concurrency, category taxonomy unification, insights service, spending summary frontend card, Flask decommission, CI pipeline.
+**Current review:** Sprint-04 (BSA-19 persistence, TD-024 dedup, BSA-13 export, BSA-07 lite recurring, TD-038/039/040/041 housekeeping)  
+**Review date:** 2026-06-21  
+**Scope:** SQLite/SQLModel persistence layer, transaction deduplication, CSV/Excel export, recurring detection, schema fixes, and AI badge.
 
-> Previous review (`Sprint-02`) is summarized at the bottom. Full text in git history.
+> Previous review (`Sprint-03`) is summarized at the bottom. Full text in git history.
 
 ---
 
-## Sprint-03 Completion Check
+## Sprint-04 Completion Check
 
-| Task                             | Shipped? | Notes                                                                   |
-| -------------------------------- | -------- | ----------------------------------------------------------------------- |
-| TD-033 — LLM index bug           | ✅       | `item.get("index")` + bounds check; unit test in `test_llm_enricher.py` |
-| TD-034 — Aggregate after enrich  | ✅       | `TransactionPatternTrainer().analyze(enriched)` called post-enrichment  |
-| TD-035 — Bounded enrichment      | ✅       | `asyncio.Semaphore(3)` + `wait_for` timeout + row cap                   |
-| TD-036 — Summary endpoint typing | ✅       | `list[Transaction]`; bad input → 422; 3 new tests                       |
-| TD-037 — Stale localhost:5000    | ✅       | `API_BASE` centralized; all error strings interpolate it                |
-| CR-S2-08 — Category taxonomy     | ✅       | `categories.py` — 16 canonical labels + regex→canonical mapping         |
-| BSA-18 — Flask deleted, CI added | ✅       | `backend/` gone; `.github/workflows/test.yml` added                     |
-| BSA-12 / TD-038 — Summary card   | ✅       | `SpendingSummary.tsx`; `getSummary()` in api.ts; TS types updated       |
-| BSA-15 — Smart Insights strip    | ✅       | `services/insights.py`; `InsightsStrip.tsx`; backend emits `insights[]` |
-| ADR-002 — Persistence design     | ✅       | `docs/adr-002-persistence.md`; implementation deferred to Sprint-04     |
+| Task | Shipped? | Notes |
+|------|----------|-------|
+| TD-039 — `insights` in `AnalysisResult` | ✅ | Already present from Sprint-03; confirmed by reading schemas.py |
+| TD-040 — `currency` in `SummaryResponse` | ✅ | Already present from Sprint-03; confirmed by reading schemas.py |
+| TD-041 — backend-v2 → backend rename | ✅ | CLAUDE.md cleaned; all `backend-v2` references removed |
+| TD-038 — AI badge on enriched rows (full) | ✅ | New "Category" column in TransactionTable; indigo "AI" pill with `title="AI-categorized"` |
+| BSA-19 — SQLite persistence layer | ✅ | `app/db/` package, Alembic migration, `persist=true` flag, `GET /api/statements` |
+| TD-024 — Row-level transaction dedup | ✅ | `_deduplicate_transactions()` — compound key, before confidence scoring, 7 tests |
+| BSA-13 — CSV / Excel export | ✅ | `POST /api/export/transactions`, StreamingResponse, "↓ CSV" + "↓ Excel" buttons |
+| BSA-07 lite — Recurring detection | ✅ | `detect_recurring()`, `recurring_candidates` in schema, ↻ pill in merchant table |
 
-**Net:** A clean sprint. All P0 fixes landed; both P1 features (summary card, insights strip) shipped; Flask is gone; the persistence design is committed. The codebase is in its cleanest state since the project started.
+**Net:** A complete sprint. All P0 items shipped; both P1 items pulled forward and shipped. The product is no longer stateless. Test count grew from 18 to ~38.
 
 ---
 
 ## Summary
 
-Sprint-03 converted Sprint-02's sunk investment into working user-visible features. The enricher refactor is the most technically interesting piece — the concurrency model (Semaphore + `wait_for`) is the right shape for a best-effort, latency-bounded async service. The category taxonomy unification was overdue and the `REGEX_TO_CANONICAL` approach is clean. One new issue was found in the insights service (CV threshold is slightly too tight for some real-world merchant data). The frontend additions are solid.
+Sprint-04 is the most architecturally significant sprint so far. Persistence is live, dedup is two-layered (file-hash + row-level), and the export path is clean (streaming, no temp files). The code quality is consistent with the previous sprint — the db package is well-structured, the crud functions are isolated, and the test coverage for the new code is solid. Issues found are low-severity; none block Sprint-05.
 
 ---
 
 ## What Looks Good
 
-- **Bounded enrichment shape is correct.** `asyncio.Semaphore(3)` for concurrent batches + a global `wait_for` deadline is exactly the right pattern for a best-effort LLM call. Partial enrichment is better than a hung request.
-- **`_run_batch` exception taxonomy is now specific.** `ConnectError`, `TimeoutException`, `HTTPStatusError`, `JSONDecodeError` each get their own `except` with an appropriate log level. The final `except Exception` logs `exc_info=True` — it can't mask problems silently the way the old catch-all did.
-- **`categories.py` co-locates both paths.** `CANONICAL_CATEGORIES` and `REGEX_TO_CANONICAL` in the same file means a future maintainer who adds a category has one place to touch. That's the right data-locality decision.
-- **`generate_insights()` is a pure function.** No side effects, no I/O, testable in isolation. The CV-based recurring teaser is a nice touch — it handles any price point without hardcoding thresholds.
-- **`SpendingSummary.tsx` sources from the backend.** Calling `POST /summary` rather than re-deriving from the analyze response means one authoritative math location. This closes CR-F2-04 and CR-F2-06 from Sprint-02.
-- **The `(may exceed 100%)` caveat is inline.** Showing the caveat right next to the category percentages is the correct UX decision — it preempts user confusion without requiring a tooltip or documentation.
-- **CI encoding guard targets the live file.** The `file backend/requirements.txt | grep -qE 'ASCII|UTF-8'` guard correctly points at the only remaining `requirements.txt` now that Flask is deleted.
-- **Test count grew.** 18 tests post-Sprint-02 → now includes `test_insights.py` cases. Every new service has a test file.
+**`app/db/` package structure is clean.** Three-file split (`database.py`, `models.py`, `crud.py`) maps exactly to three concerns: engine/session, table definitions, and write logic. A future developer can find any persistence concern in one obvious file.
+
+**Pydantic and SQLModel models are kept separate.** `StatementDB`/`TransactionDB` are in `db/models.py`; `Transaction`/`AccountInfo` stay in `schemas.py`. This avoids the well-known footgun where `table=True` modifies field ordering and breaks Pydantic validators.
+
+**`save_statement()` uses `flush()` before writing transactions.** `session.flush()` populates `stmt.id` within the transaction without committing. This means all rows land in a single commit — either all of them succeed or none do. Clean atomicity.
+
+**The `persist=true` flag is truly additive.** Tests that hit `/api/analyze/bank/statement` without the flag continue to work without any DB setup. The stateless path is unchanged. Sprint-04's test for `persist=true` confirms this by using a separate DB fixture.
+
+**`_deduplicate_transactions()` runs at the right point.** After extraction, before confidence scoring. Duplicates never reach the scorer and never reach the DB. The compound key `(date, amount, narration[:100], balance)` is the right fingerprint for bank rows — more than just `(date, amount)` (catches legitimate same-day same-amount transactions) but not the full narration (avoids false-uniqueness on whitespace variation).
+
+**Export uses StreamingResponse with no temp files.** The `BytesIO`/`StringIO` approach avoids the `uploads/` accumulation problem flagged in Sprint-01. The `openpyxl` auto-fit with a 50-char cap is a thoughtful UX detail.
+
+**CV threshold raise from 0.15 → 0.25 is the right call.** The CR-S3-01 finding from the Sprint-03 review was acted on. The new threshold catches real-world subscriptions with minor price variation while still filtering genuinely irregular merchants.
+
+**`detect_recurring()` is a pure function.** No side effects, easily testable, returns a stable sorted list. Four tests cover all the cases — detected (CV low), excluded (CV high), excluded (count < 3), excluded (UNKNOWN/OTHER).
 
 ---
 
 ## Issues Found
 
-### CR-S3-01 ✅ CV threshold of 0.15 may be too tight for some recurring merchants — **FIXED 2026-06-21 (BSA-07 lite)**
+### CR-S4-01 🟡 `GET /api/statements` has no pagination — future scalability concern
 
-**File:** `backend/app/services/insights.py` — line ~55  
-**Severity:** 🟡 Medium (false negative — users miss a real insight)
+**File:** `backend/app/routers/statements.py`  
+**Severity:** 🟡 Medium (not a problem now; will be at scale)
 
 ```python
-cv = (std / avg) if std is not None else 1.0
-if cv < 0.15:
-    insights.append(f"Likely recurring: ...")
+statements = session.exec(
+    select(StatementDB).order_by(StatementDB.uploaded_at.desc())
+).all()
 ```
 
-A coefficient of variation < 0.15 (15%) means the standard deviation must be less than 15% of the mean amount. Real-world subscriptions sometimes vary — a streaming service that charges in USD will fluctuate with exchange rates; a telecom bill has occasional usage charges. In practice, most Indian subscription merchants (Netflix, Spotify, hotstar) are fixed amounts and will pass this threshold. But a mobile plan that occasionally adds data charges might have a CV of 0.18 and be silently excluded.
+`.all()` fetches every row. For a personal tool uploading a few statements a month, this is negligible. At 100+ uploads, this query returns the full history payload on every page load. Add `limit` / `offset` query params before the history UI is wired in Sprint-05:
 
-**Recommendation:** Raise to `cv < 0.25` or make it a configurable constant (`RECURRING_CV_THRESHOLD = 0.15` at the top of the file) so it can be tuned. Not a blocker — the teaser is explicitly labeled "Likely."
-
----
-
-### CR-S3-02 🟡 `insights` field not in `AnalysisResult` schema (Pydantic)
-
-**File:** `backend/app/models/schemas.py`  
-**Severity:** 🟡 Medium (schema drift — the TS type is ahead of Pydantic)
-
-`frontend/types.ts` correctly adds `insights: string[]` to `AnalysisResult`. But if `AnalysisResult` in `schemas.py` doesn't include an `insights` field, the FastAPI response model won't validate or document it — it just passes through in the `dict` layer. Check that `AnalysisResult` in `schemas.py` has `insights: list[str] = []`.
-
-**Impact:** No runtime bug currently (FastAPI returns the dict unfiltered when using `response_model=None` or a dict type), but Swagger UI won't show the field and any future response-model validation will strip it.
-
----
-
-### CR-S3-03 🟡 `SummaryResponse` lacks `currency` field but frontend reads it
-
-**Files:** `backend/app/models/schemas.py`, `frontend/components/SpendingSummary.tsx` line ~56  
-**Severity:** 🟡 Low (fallback hardcoded to INR — currently correct, not future-proof)
-
-```typescript
-const currency = summary.currency ?? "INR";
+```python
+@router.get("/api/statements")
+def list_statements(
+    limit: int = Query(default=20, le=100),
+    offset: int = Query(default=0),
+    session: Session = Depends(get_session),
+):
 ```
 
-The backend `SummaryResponse` doesn't emit a `currency` field. The frontend falls back to `"INR"` silently. This is fine for a single-market tool, but:
+---
 
-1. The `??` implies a future multi-currency intent that doesn't exist yet — it's setting an expectation the backend doesn't meet.
-2. If multi-currency ever lands, both sides need to change. Add `currency: str = "INR"` to `SummaryResponse` now so the contract is explicit.
+### CR-S4-02 🟡 `GET /api/statements/{id}/transactions` endpoint is missing
+
+**File:** `backend/app/routers/statements.py` (gap — endpoint not yet added)  
+**Severity:** 🟡 Medium (blocks Sprint-05 history UI)
+
+The ADR and Sprint-04 plan both mention `GET /api/statements/{id}/transactions` as the detail endpoint for pulling a specific statement's transaction payload. `StatementDB.id` and `TransactionDB.statement_id` FK are in place, but there's no router handler. Sprint-05's month-over-month comparison and history view will need this. Add it as a first commit of Sprint-05:
+
+```python
+@router.get("/api/statements/{statement_id}/transactions")
+def get_statement_transactions(statement_id: int, session: Session = Depends(get_session)):
+    txns = session.exec(
+        select(TransactionDB).where(TransactionDB.statement_id == statement_id)
+    ).all()
+    if not txns:
+        raise HTTPException(status_code=404, detail="Statement not found or empty")
+    return {"transactions": [t.model_dump() for t in txns]}
+```
 
 ---
 
-### CR-S3-04 🟢 AI badge on enriched rows still missing from `TransactionTable.tsx`
+### CR-S4-03 🟢 `CorrectionDB` has no write path yet — fingerprint format undocumented
 
-**File:** `frontend/components/TransactionTable.tsx`  
-**Severity:** 🟢 Low (missing, not broken — TD-038 partially open)
+**File:** `backend/app/db/models.py`, `backend/app/db/crud.py`  
+**Severity:** 🟢 Low (intentional deferral — BSA-16 will wire it)
 
-`llm_enriched?: boolean` is now in `types.ts` and the backend sets it. `SpendingSummary` is wired. But `TransactionTable.tsx` doesn't render any visual indicator on LLM-enriched rows. Users can't distinguish AI-assigned categories from regex-detected ones. This was the second half of TD-038 (the summary card was the first). Small addition: a subtle "AI" pill or icon in the category cell.
+`CorrectionDB` is in the schema and Alembic migration. But `save_correction()` and the correction fingerprint format (SHA-256 of what exactly?) aren't defined. For BSA-16 to work, the fingerprint needs a clear, documented spec before implementation. Recommendation: add a comment in `crud.py`:
+
+```python
+# CorrectionDB fingerprint: SHA-256 of f"{transaction_date}:{amount}:{narration[:100]}"
+# Must match the key used in the learning loop (BSA-16).
+```
 
 ---
 
-### CR-S3-05 ✅ `test_insights.py` doesn't cover the recurring teaser path — **FIXED 2026-06-21 (BSA-07 lite)**
+### CR-S4-04 🟢 `TransactionDB.category` stored as JSON string — no constraint or validation
 
-**File:** `backend/tests/test_insights.py`  
-**Severity:** 🟢 Low (coverage gap)
+**File:** `backend/app/db/models.py`  
+**Severity:** 🟢 Low (consistency concern)
 
-Verify that the file has a test case that feeds ≥3 transactions for the same merchant with a tight amount spread, and asserts the recurring callout appears. The CV formula is subtle enough that a regression test here is worth having.
+```python
+category: Optional[str] = None  # JSON-encoded list: '["Food & Dining"]'
+```
+
+A comment documents the intent, but there's nothing preventing a caller from writing a plain string (e.g., `"Food & Dining"`) instead of a JSON list. `crud.py` currently uses `json.dumps(txn.get("category") or [])` correctly. Add a note in `crud.py` or a small validator to catch this if/when more write paths open up.
+
+---
+
+### CR-S4-05 🟢 Export `filename` parameter is unsanitized in `Content-Disposition` header
+
+**File:** `backend/app/routers/export.py`  
+**Severity:** 🟢 Low (minor — personal tool, no auth surface)
+
+```python
+headers={"Content-Disposition": f'attachment; filename="{req.filename}.csv"'}
+```
+
+If a client passes a path-traversal string, it would appear verbatim in the header. The browser uses this for the save dialog, not for disk paths, so the blast radius is cosmetic. One-line fix:
+
+```python
+import re
+safe_name = re.sub(r"[^\w\-.]", "_", req.filename)
+```
 
 ---
 
 ## Suggestions (Style / Cleanup)
 
-| #        | File                  | Suggestion                                                                                                                                                                                                                                                                                                                                                 |
-| -------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CR-S3-06 | `categories.py`       | Add a startup assertion: `assert all(v in CANONICAL_CATEGORIES for v in REGEX_TO_CANONICAL.values())` — validates mapping targets exist. One line, runs at import time.                                                                                                                                                                                    |
-| CR-S3-07 | `llm_enricher.py`     | `settings.llm_max_enriched` and `settings.llm_total_timeout_s` — confirm these are in `settings.py` with sensible defaults and documented in `.env.example`.                                                                                                                                                                                               |
-| CR-S3-08 | `insights.py`         | Extract `LARGE_TXN_THRESHOLD = 10_000` to `settings.py` or at minimum to a module-level constant (already done — just document it in `.env.example`).                                                                                                                                                                                                      |
-| CR-S3-09 | `SpendingSummary.tsx` | The `useEffect` re-fires whenever `transactions` reference changes (every re-render of the parent if the array is recreated inline). Memoize with `useMemo` in `App.tsx` or stabilize with a length+hash comparison. Currently fine since the parent only re-renders on file upload, but worth noting before history/multi-statement increases re-renders. |
-| CR-S3-10 | `test_insights.py`    | Parametrize the top-category, large-txn, and net-flow cases using `@pytest.mark.parametrize` for cleaner test isolation.                                                                                                                                                                                                                                   |
+| # | File | Suggestion |
+|---|------|-----------|
+| CR-S4-06 | `db/database.py` | Add a module-level docstring explaining engine lifetime (singleton at import time) and the in-memory SQLite override used in tests. |
+| CR-S4-07 | `tests/test_persistence.py` | Confirm `db_session` fixture uses `Session` from `sqlmodel` (not raw SQLAlchemy `sessionmaker`) to match the production path exactly. |
+| CR-S4-08 | `routers/analyze.py` | The `if persist:` branches live inline in the route handler. Consider a thin `PersistenceService` wrapper — makes the handler easier to read and easier to mock in tests. |
+| CR-S4-09 | `conftest.py` | `sample_transactions_payload` has 3 minimal transactions. Add one with `llm_enriched: True` and one with a non-empty `category` list — export tests should exercise those fields. |
+| CR-S4-10 | `routers/statements.py` | Add a `GET /api/statements/{id}` single-record endpoint alongside the list endpoint — useful for debug and for the future history UI. |
 
 ---
 
 ## Verdict
 
-**Approve.** Sprint-03 closed a clean loop: the two features that shipped broken in Sprint-02 now work end-to-end; both are visible in the UI; Flask is gone; CI runs on every push. The issues found (CR-S3-01 through CR-S3-05) are all medium/low severity and none block the next sprint. The most actionable one is CR-S3-02 (schema drift on the `insights` field) — fix it in the first commit of Sprint-04.
+**Approve.** Sprint-04 shipped cleanly. The persistence layer is architecturally sound, dedup is two-layered and correct, export is streaming and clean, and recurring detection is well-tested. Issues found are all low/medium severity and are either planned Sprint-05 work (CR-S4-02 missing endpoint) or minor defensive improvements. None block Sprint-05.
+
+**Priority items for Sprint-05 first commit:**
+1. `GET /api/statements/{id}/transactions` — Sprint-05 history UI is blocked without it (CR-S4-02)
+2. Pagination on `GET /api/statements` — 5 minutes, unblocks safe scaling (CR-S4-01)
 
 ---
 
-## Carried / Inherited Issues (still open)
+## Carried Issues (still open from previous sprints)
 
-- **TD-007** — `BankStatementAnalyzer` is one ~1,300-line class. The Sprint-03 services split hints at the right direction; the core parser still needs it.
-- **TD-008** — Column detection duplicated across Excel and PDF paths.
-- **TD-018** — `TransactionTable` renders all rows with no virtualization. More urgent once persistence makes multi-statement views possible.
+- **TD-007** — `BankStatementAnalyzer` is ~1,300 lines. Sprint-05 should split it before more parsers are added.
+- **TD-008** — Column detection duplicated across Excel/PDF paths. Pair with TD-007.
+- **TD-018** — `TransactionTable` renders all rows with no virtualization. More urgent now that persistence makes multi-statement history possible.
+- **TD-019** — No Docker/docker-compose. Unblocked since Flask deletion.
 - **TD-023** — Upload validation trusts extension, not magic bytes.
-- **TD-024** — No transaction dedup (higher risk post-TD-021 multi-page stitching).
 - **TD-025** — `transaction_reference` fallback regex too greedy.
 - **TD-026** — Confidence penalizes balance-less formats unconditionally.
 
 ---
 
-## Appendix — Sprint-02 Review (archived)
+## Appendix — Sprint-03 Review (archived)
 
-Sprint-02 review covered BSA-04, BSA-05, BSA-09, BSA-10/TD-031, TD-021, parser/UI polish. Its two critical findings (enricher double-index, stale port strings) and high findings (aggregate timing, summary typing, missing UI) were **all resolved in Sprint-03**. Its medium/suggestion findings (CR-S2-06 through CR-S2-11) are closed via the summary card + category taxonomy work. Full text in git history at `docs/code-review.md@pre-sprint-03`.
+Sprint-03 review covered TD-033/034/035/036/037, CR-S2-08 (category taxonomy), BSA-12/15 (spending card + insights strip), BSA-18 (Flask deletion + CI), and ADR-002. Its findings CR-S3-01 through CR-S3-05 were **all resolved in Sprint-04**. CV threshold fix (CR-S3-01) landed in BSA-07 lite; all schema/badge items resolved in housekeeping. Full text in git history.
 
 ---
 
-_Tech debt: `docs/tech-debt.md` · Testing: `docs/testing-strategy.md` · Study: `docs/study/sprint-03-learnings.md` · Sprint plan: `docs/sprint-04-plan.md`_
+_Tech debt: `docs/tech-debt.md` · Testing: `docs/testing-strategy.md` · Study: `docs/study/sprint-04-learnings.md` · Sprint plan: `docs/sprint-05-plan.md`_
