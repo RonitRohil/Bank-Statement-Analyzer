@@ -276,8 +276,8 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
                     formatter={(
                       val: number,
                       _name: string,
-                      props: { payload: { fullName: string } },
-                    ) => [inr(val), props.payload.fullName]}
+                      props: { payload?: { fullName: string } },
+                    ) => [inr(val), props.payload?.fullName ?? ""]}
                     contentStyle={{
                       borderRadius: "8px",
                       border: "none",
