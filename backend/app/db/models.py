@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Optional
 from sqlmodel import SQLModel, Field
 
@@ -13,7 +13,7 @@ class StatementDB(SQLModel, table=True):
     account_holder: Optional[str] = None
     period_from: Optional[str] = None  # ISO date
     period_to: Optional[str] = None  # ISO date
-    uploaded_at: datetime = Field(default_factory=datetime.utcnow)
+    uploaded_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     confidence_overall: Optional[float] = None
 
 
@@ -43,4 +43,4 @@ class CorrectionDB(SQLModel, table=True):
     )  # SHA-256 of (date+amount+narration)
     corrected_category: str
     corrected_merchant: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
