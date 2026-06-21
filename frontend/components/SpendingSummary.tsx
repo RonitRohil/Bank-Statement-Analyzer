@@ -15,14 +15,20 @@ export const SpendingSummary: React.FC<SpendingSummaryProps> = ({
 
   useEffect(() => {
     if (!transactions.length) return;
-    setLoading(true);
-    setError(null);
-    getSummary(transactions)
-      .then(setSummary)
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : "Summary unavailable"),
-      )
-      .finally(() => setLoading(false));
+
+    const run = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        setSummary(await getSummary(transactions));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Summary unavailable");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    run();
   }, [transactions]);
 
   if (loading) {

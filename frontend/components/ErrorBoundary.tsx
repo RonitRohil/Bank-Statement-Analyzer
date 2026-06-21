@@ -1,5 +1,5 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { AlertTriangle, RefreshCcw } from 'lucide-react';
+import React, { Component, ErrorInfo, ReactNode } from "react";
+import { AlertTriangle, RefreshCcw } from "lucide-react";
 
 interface Props {
   children: ReactNode;
@@ -21,7 +21,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught error:', error, errorInfo);
+    console.error("Uncaught error:", error, errorInfo);
   }
 
   public render() {
@@ -31,7 +31,9 @@ export class ErrorBoundary extends Component<Props, State> {
           <div className="bg-red-100 p-3 rounded-full mb-4">
             <AlertTriangle className="w-8 h-8 text-red-600" />
           </div>
-          <h2 className="text-xl font-bold text-slate-800 mb-2">Something went wrong</h2>
+          <h2 className="text-xl font-bold text-slate-800 mb-2">
+            Something went wrong
+          </h2>
           <p className="text-slate-600 mb-6 max-w-md text-sm">
             We encountered an unexpected error while rendering this section.
           </p>

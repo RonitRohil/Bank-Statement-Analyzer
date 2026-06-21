@@ -54,11 +54,23 @@ export interface Transaction {
   upi_id: string | null;
 }
 
+export interface RecurringCandidate {
+  merchant: string;
+  count: number;
+  avg_amount: number;
+  std_amount: number;
+  cv: number;
+  first_seen: string | null;
+  last_seen: string | null;
+  common_days: number[];
+}
+
 export interface AnalysisResult {
   account_info: AccountInfo;
   confidence_summary: ConfidenceSummary;
   insights: string[];
   merchant_insights: Record<string, MerchantInsight>;
+  recurring_candidates?: RecurringCandidate[];
   transactions: Transaction[];
 }
 

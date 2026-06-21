@@ -1,22 +1,57 @@
-import React from 'react';
-import { Transaction } from '../types';
-import { ArrowDownLeft, ArrowUpRight } from 'lucide-react';
+import React, { useState } from "react";
+import { Transaction } from "../types";
+import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { exportTransactions } from "../services/api";
 
 interface TransactionTableProps {
   transactions: Transaction[];
 }
 
-export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions }) => {
+export const TransactionTable: React.FC<TransactionTableProps> = ({
+  transactions,
+}) => {
   // Defensive check for transactions array
   const safeTransactions = transactions || [];
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async (format: "csv" | "xlsx") => {
+    setExporting(true);
+    try {
+      await exportTransactions(safeTransactions, format, "bank_statement");
+    } catch (err) {
+      console.error("Export error:", err);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
       <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
         <h3 className="font-bold text-slate-800 text-lg">Transactions</h3>
-        <span className="text-sm text-slate-500">{safeTransactions.length} entries</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-slate-500">
+            {safeTransactions.length} entries
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => handleExport("csv")}
+              disabled={exporting || safeTransactions.length === 0}
+              className="px-3 py-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50"
+            >
+              {exporting ? "Exporting…" : "↓ CSV"}
+            </button>
+            <button
+              onClick={() => handleExport("xlsx")}
+              disabled={exporting || safeTransactions.length === 0}
+              className="px-3 py-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50"
+            >
+              {exporting ? "Exporting…" : "↓ Excel"}
+            </button>
+          </div>
+        </div>
       </div>
-      
+
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead>
@@ -24,6 +59,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
               <th className="px-6 py-3 font-semibold">Date</th>
               <th className="px-6 py-3 font-semibold">Narration</th>
               <th className="px-6 py-3 font-semibold">Method</th>
+              <th className="px-6 py-3 font-semibold">Category</th>
               <th className="px-6 py-3 font-semibold text-right">Amount</th>
               <th className="px-6 py-3 font-semibold text-right">Balance</th>
               <th className="px-6 py-3 font-semibold text-center">Type</th>
@@ -31,39 +67,69 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
           </thead>
           <tbody className="divide-y divide-slate-100 text-sm">
             {safeTransactions.map((txn, index) => (
-              <tr key={`${txn.transaction_reference}-${index}`} className="hover:bg-slate-50 transition-colors">
+              <tr
+                key={`${txn.transaction_reference}-${index}`}
+                className="hover:bg-slate-50 transition-colors"
+              >
                 <td className="px-6 py-4 font-medium text-slate-700 whitespace-nowrap">
                   {txn.transaction_date}
                 </td>
-                <td className="px-6 py-4 text-slate-600 max-w-xs truncate" title={txn.narration}>
+                <td
+                  className="px-6 py-4 text-slate-600 max-w-xs truncate"
+                  title={txn.narration}
+                >
                   {txn.narration}
                   {txn.receiver_details?.name && (
-                    <div className="text-xs text-slate-400 mt-1">To: {txn.receiver_details.name}</div>
+                    <div className="text-xs text-slate-400 mt-1">
+                      To: {txn.receiver_details.name}
+                    </div>
                   )}
                 </td>
                 <td className="px-6 py-4">
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">
-                      {txn.payment_method || 'OTH'}
-                    </span>
-                    {txn.llm_enriched && (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold bg-violet-100 text-violet-700">
-                        AI
-                      </span>
-                    )}
-                  </div>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">
+                    {txn.payment_method || "OTH"}
+                  </span>
                 </td>
-                <td className={`px-6 py-4 text-right font-bold ${
-                  txn.transaction_type === 'CREDIT' ? 'text-emerald-600' : 'text-rose-600'
-                }`}>
-                  {txn.transaction_type === 'CREDIT' ? '+' : '-'} 
-                  {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(txn.amount || 0)}
+                <td className="px-6 py-4">
+                  {txn.category && txn.category.length > 0 ? (
+                    <span className="flex items-center gap-1">
+                      <span className="text-xs text-slate-600">
+                        {txn.category.join(", ")}
+                      </span>
+                      {txn.llm_enriched && (
+                        <span
+                          title="AI-categorized"
+                          className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-indigo-100 text-indigo-700"
+                        >
+                          AI
+                        </span>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 text-xs">—</span>
+                  )}
+                </td>
+                <td
+                  className={`px-6 py-4 text-right font-bold ${
+                    txn.transaction_type === "CREDIT"
+                      ? "text-emerald-600"
+                      : "text-rose-600"
+                  }`}
+                >
+                  {txn.transaction_type === "CREDIT" ? "+" : "-"}
+                  {new Intl.NumberFormat("en-IN", {
+                    style: "currency",
+                    currency: "INR",
+                  }).format(txn.amount || 0)}
                 </td>
                 <td className="px-6 py-4 text-right text-slate-700">
-                   {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(txn.balance || 0)}
+                  {new Intl.NumberFormat("en-IN", {
+                    style: "currency",
+                    currency: "INR",
+                  }).format(txn.balance || 0)}
                 </td>
                 <td className="px-6 py-4 text-center">
-                  {txn.transaction_type === 'CREDIT' ? (
+                  {txn.transaction_type === "CREDIT" ? (
                     <div className="inline-flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full text-xs font-bold">
                       <ArrowDownLeft size={12} /> Credit
                     </div>
@@ -78,7 +144,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
           </tbody>
         </table>
       </div>
-      
+
       {safeTransactions.length === 0 && (
         <div className="p-8 text-center text-slate-400">
           No transactions found in this period.

@@ -25,9 +25,8 @@ const App: React.FC = () => {
         setData(response.result);
       } else {
         // Handle logic errors where HTTP might be 200 but success is 0
-        const resAny = response as any;
         setError(
-          resAny.result?.error ||
+          (response.result as unknown as { error?: string })?.error ||
             response.message ||
             "Failed to analyze statement",
         );
@@ -139,7 +138,10 @@ const App: React.FC = () => {
             </ErrorBoundary>
 
             <ErrorBoundary>
-              <MerchantInsights insights={data.merchant_insights} />
+              <MerchantInsights
+                insights={data.merchant_insights}
+                recurringCandidates={data.recurring_candidates ?? []}
+              />
             </ErrorBoundary>
 
             <ErrorBoundary>

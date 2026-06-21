@@ -69,7 +69,7 @@ def generate_insights(
         elif net < 0:
             insights.append(f"Net negative: −₹{abs(net):,.0f} for the period")
 
-    # 5. Likely-recurring teaser: ≥3 hits with coefficient of variation < 15%
+    # 5. Likely-recurring teaser: ≥3 hits with coefficient of variation < 25%
     for merchant, data in (merchant_insights or {}).items():
         if merchant == "UNKNOWN":
             continue
@@ -78,10 +78,52 @@ def generate_insights(
         std = data.get("std_amount")
         if m_count >= 3 and avg and avg > 0:
             cv = (std / avg) if std is not None else 1.0
-            if cv < 0.15:
+            if cv < 0.25:
                 insights.append(
                     f"Likely recurring: {merchant} (₹{avg:,.0f} avg, {m_count}×)"
                 )
                 break  # teaser — one match only
 
     return insights
+
+
+def detect_recurring(merchant_insights: dict) -> list[dict]:
+    """
+    Returns merchants that appear recurring within a single statement.
+
+    Criteria:
+      - count >= 3
+      - coefficient of variation (std / avg) < 0.25
+      - not "UNKNOWN" / "OTHER" / empty
+    """
+    candidates = []
+    skip = {"UNKNOWN", "OTHER", "", None}
+
+    for merchant, data in merchant_insights.items():
+        if merchant in skip:
+            continue
+        count = data.get("count", 0)
+        avg = data.get("avg_amount", 0.0)
+        std = data.get("std_amount", 0.0)
+
+        if count < 3 or avg == 0:
+            continue
+
+        cv = std / avg
+        if cv >= 0.25:
+            continue
+
+        candidates.append(
+            {
+                "merchant": merchant,
+                "count": count,
+                "avg_amount": round(avg, 2),
+                "std_amount": round(std, 2),
+                "cv": round(cv, 4),
+                "first_seen": data.get("first_seen"),
+                "last_seen": data.get("last_seen"),
+                "common_days": data.get("common_days", []),
+            }
+        )
+
+    return sorted(candidates, key=lambda x: x["count"], reverse=True)

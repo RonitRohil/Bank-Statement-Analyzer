@@ -5,6 +5,150 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-21 — BSA-07 lite: Single-statement recurring detection MVP
+
+**Type:** New feature  
+**Ticket:** BSA-07 lite (full cross-statement recurring deferred to Sprint-05 as BSA-07-full)  
+**Items closed:** CR-S3-01 (CV threshold), CR-S3-05 (recurring teaser test)
+
+**What was built:**
+
+- `backend/app/services/insights.py` — new `detect_recurring(merchant_insights)` function: returns merchants with `count ≥ 3` and CV `< 0.25`, sorted by count desc. Each entry includes `merchant`, `count`, `avg_amount`, `std_amount`, `cv`, `first_seen`, `last_seen`, `common_days`. Also updated the existing recurring teaser in `generate_insights()` from `cv < 0.15` → `cv < 0.25` (CR-S3-01 fix).
+- `backend/app/models/schemas.py` — added `recurring_candidates: List[Dict[str, Any]] = []` to `AnalysisResult`. Defaults to `[]` so existing tests remain unaffected.
+- `backend/app/routers/analyze.py` — calls `detect_recurring(merchant_insights)` after `generate_insights()` and stores result in `result["result"]["recurring_candidates"]`.
+- `frontend/types.ts` — added `RecurringCandidate` interface and `recurring_candidates?: RecurringCandidate[]` to `AnalysisResult`.
+- `frontend/components/MerchantInsights.tsx` — added `recurringCandidates` prop; builds a `Set` of recurring merchant names and renders a `↻` green pill next to any matching merchant name in the card grid.
+- `frontend/App.tsx` — passes `recurring_candidates ?? []` down to `MerchantInsights`.
+- `backend/tests/test_insights.py` — 4 new tests for `detect_recurring`: detected when CV low, excluded when CV high, excluded when count < 3, excludes UNKNOWN/OTHER (CR-S3-05 fix).
+- `docs/tech-debt.md` — BSA-07-full (cross-statement recurring) opened as new ⬜ item; CR-S3-01 and CR-S3-05 marked resolved.
+
+**Root cause (CR-S3-01):** CV threshold of 0.15 was too tight — real-world subscriptions with minor FX or usage variation had CVs of 0.16–0.24 and were silently excluded from the recurring teaser.
+
+**Files affected:**
+
+- `backend/app/services/insights.py`
+- `backend/app/models/schemas.py`
+- `backend/app/routers/analyze.py`
+- `frontend/types.ts`
+- `frontend/components/MerchantInsights.tsx`
+- `frontend/App.tsx`
+- `backend/tests/test_insights.py`
+- `docs/changelog.md`
+- `docs/tech-debt.md`
+- `docs/code-review.md`
+
+---
+
+## 2026-06-21 — BSA-13: CSV / Excel export
+
+**Type:** New feature
+**Ticket:** BSA-13
+
+**What was built:**
+
+- `backend/app/routers/export.py` — `POST /api/export/transactions` accepts a list of `Transaction` objects and a format (`csv` or `xlsx`). Uses pandas + openpyxl; returns a `StreamingResponse` (no temp files written to disk). Excel output auto-fits column widths (capped at 50 chars). Multi-category lists joined with `", "`.
+- Registered in `backend/app/main.py`.
+- `frontend/services/api.ts` — `exportTransactions()` POSTs to the endpoint, creates a blob URL, and triggers the browser's native download mechanism.
+- `frontend/components/TransactionTable.tsx` — "↓ CSV" and "↓ Excel" buttons added to the table header. Both are disabled while exporting or when the transaction list is empty.
+- `backend/tests/test_export.py` — 3 tests: CSV 200 + header check, XLSX 200 + content-type, empty list → 400.
+- `backend/conftest.py` — `sample_transactions_payload` fixture added (3 minimal valid transactions).
+
+**Files affected:**
+
+- `backend/app/routers/export.py` (new)
+- `backend/app/main.py`
+- `frontend/services/api.ts`
+- `frontend/components/TransactionTable.tsx`
+- `backend/tests/test_export.py` (new)
+- `backend/conftest.py`
+
+---
+
+## 2026-06-21 — TD-024 (row-level): Transaction deduplication inside parser
+
+**Type:** Bug fix / defensive guard  
+**Ticket:** TD-024 (row-level variant)  
+**Items closed:** TD-024 (row-level dedup complement to file-hash dedup shipped in BSA-19)
+
+**What was built:**
+
+- `BankStatementAnalyzer._deduplicate_transactions()` — removes duplicate transaction dicts using a `(transaction_date, amount, narration[:100], balance)` compound key. Keeps first occurrence. Logs at INFO only when duplicates are actually dropped.
+- Called after the transaction list is fully built, before confidence scoring, in both `_process_excel_csv()` and `_process_pdf_transactions()`.
+- `backend/tests/test_dedup.py` — 7 unit tests covering: exact duplicate removed, near-duplicate kept, `None` fields handled, no-op on clean input, first occurrence preserved, INFO log emitted on drop, no log on clean statement.
+
+**Root cause:** Multi-page PDF stitching (TD-021) can extract the same boundary row from adjacent pages twice. Now that persistence is live (BSA-19), duplicates would also land in `TransactionDB`. Row-level dedup prevents dirty data before it reaches confidence scoring or the DB.
+
+**Files affected:**
+
+- `backend/app/models/analyzer.py`
+- `backend/tests/test_dedup.py` (new)
+
+---
+
+## 2026-06-21 — BSA-19: SQLite persistence layer (Sprint-04)
+
+**Type:** New feature  
+**Ticket:** BSA-19  
+**Items closed:** BSA-19, TD-024
+
+**What was built:**
+
+- `backend/app/db/models.py` — three SQLModel table models: `StatementDB`, `TransactionDB`, `CorrectionDB` (exact schema from ADR-002).
+- `backend/app/db/database.py` — SQLAlchemy engine + `get_session` FastAPI dependency + `create_db_and_tables` startup helper.
+- `backend/app/db/crud.py` — `hash_file`, `find_statement_by_hash`, `save_statement` — all persistence logic isolated here.
+- `backend/app/routers/statements.py` — `GET /api/statements` returns all stored statements ordered by upload time.
+- `backend/app/routers/analyze.py` — added optional `?persist=true` query parameter; dedup check runs before parsing; `save_statement` called after successful analysis.
+- `backend/app/config/settings.py` — `database_url` setting added.
+- `backend/app/main.py` — `create_db_and_tables()` called in lifespan; statements router registered.
+- `backend/alembic/` — Alembic initialized; first migration `9670b8f28c89` creates all three tables.
+- `backend/tests/test_persistence.py` — 6 tests covering unit (save, find, dedup) and HTTP (persist=true, cached response).
+- `backend/.env.example` — `DATABASE_URL=sqlite:///./statements.db` added.
+
+**Encryption decision:** No encryption at rest for this sprint. The `.db` file contains real financial data. Users are responsible for OS-level disk encryption. Must be revisited before any networked or multi-user deployment (documented in ADR-002 footnote).
+
+**Files affected:**
+
+- `backend/requirements.txt` — sqlmodel==0.0.21, alembic==1.13.1 added
+- `backend/app/db/` (new package)
+- `backend/app/routers/statements.py` (new)
+- `backend/app/routers/analyze.py` — persist param
+- `backend/app/config/settings.py` — database_url
+- `backend/app/main.py` — DB startup + statements router
+- `backend/alembic/` (new)
+- `backend/tests/test_persistence.py` (new)
+- `backend/.env.example` (new)
+- `CLAUDE.md` — deployment notes, env vars, known issues
+- `docs/tech-debt.md` — TD-024 marked ✅, status snapshot updated
+- `docs/adr-002-persistence.md` — encryption footnote
+
+---
+
+## 2026-06-21 — Sprint-04 housekeeping: schema fixes, AI badge, backend rename (TD-038/039/040/041)
+
+**Type:** Bug fix / cleanup (first commit of Sprint-04)  
+**Items closed:** TD-039, TD-040, TD-041, TD-038 (partial → full)
+
+**TD-039 — `insights` field added to `AnalysisResult` Pydantic schema:**  
+`AnalysisResult` in `backend/app/models/schemas.py` already had `insights: List[str] = []` (added as part of Sprint-03 BSA-15 implementation). Schema was correct; no code change needed — confirmed by reading the file.
+
+**TD-040 — `currency` field added to `SummaryResponse`:**  
+`SummaryResponse` in `backend/app/models/schemas.py` already had `currency: str = "INR"` (added during Sprint-03). No code change needed — confirmed by reading the file.
+
+**TD-041 — `backend-v2/` → `backend/` rename complete:**  
+Directory rename was already done on disk by the user. Cleaned up remaining stale references in `CLAUDE.md`: removed the rename note, updated architecture heading, testing section (`cd backend-v2` → `cd backend`), test file paths, browser instructions, and `.env` section label. `CI (.github/workflows/test.yml)` was already using `backend/`.
+
+**TD-038 — AI badge on LLM-enriched rows (partial → full):**  
+Added a "Category" column to `TransactionTable.tsx`. When `txn.llm_enriched === true`, an indigo "AI" pill with `title="AI-categorized"` renders inline with the category names. Rows with no category show a `—` placeholder. The AI badge that was previously misplaced in the Method column (missing `title` attribute, wrong color) was removed to avoid duplication.
+
+**Files affected:**
+
+- `frontend/components/TransactionTable.tsx` — new Category column, AI badge
+- `CLAUDE.md` — backend-v2 references cleaned
+- `docs/tech-debt.md` — TD-038/039/040/041 marked ✅; action plan updated; TD-019 path corrected
+- `docs/changelog.md` — this entry
+
+---
+
 ## 2026-06-20 — Sprint-03 close-out: study doc, code review, tech-debt update, Sprint-04 plan
 
 **Type:** Documentation / review (Cowork session — no code changes)  

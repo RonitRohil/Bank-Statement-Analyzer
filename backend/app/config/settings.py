@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     ollama_model: str = "qwen2.5:7b"
     llm_total_timeout_s: float = 30.0
     llm_max_enriched: int = 100
+    database_url: str = "sqlite:///./statements.db"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

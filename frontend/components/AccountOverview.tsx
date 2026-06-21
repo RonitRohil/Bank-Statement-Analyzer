@@ -1,6 +1,6 @@
-import React from 'react';
-import { AccountInfo, ConfidenceSummary } from '../types';
-import { Building2, User, Calendar, ShieldCheck } from 'lucide-react';
+import React from "react";
+import { AccountInfo, ConfidenceSummary } from "../types";
+import { Building2, User, Calendar, ShieldCheck } from "lucide-react";
 
 interface AccountOverviewProps {
   info: AccountInfo;
@@ -8,10 +8,12 @@ interface AccountOverviewProps {
 }
 
 const fmtDate = (d: string | null | undefined): string => {
-  if (!d) return '—';
+  if (!d) return "—";
   try {
-    return new Date(d + 'T00:00:00').toLocaleDateString('en-IN', {
-      day: 'numeric', month: 'short', year: 'numeric',
+    return new Date(d + "T00:00:00").toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
     });
   } catch {
     return d;
@@ -19,19 +21,25 @@ const fmtDate = (d: string | null | undefined): string => {
 };
 
 const scoreColor = (score: number): string => {
-  if (score >= 0.9) return 'bg-emerald-500';
-  if (score >= 0.75) return 'bg-amber-400';
-  return 'bg-rose-500';
+  if (score >= 0.9) return "bg-emerald-500";
+  if (score >= 0.75) return "bg-amber-400";
+  return "bg-rose-500";
 };
 
-export const AccountOverview: React.FC<AccountOverviewProps> = ({ info, confidence }) => {
+export const AccountOverview: React.FC<AccountOverviewProps> = ({
+  info,
+  confidence,
+}) => {
   const safeInfo: Partial<AccountInfo> = info || {};
-  const safeConf = confidence || { high_confidence_txns: 0, total_transactions: 0, overall_score: 0 };
+  const safeConf = confidence || {
+    high_confidence_txns: 0,
+    total_transactions: 0,
+    overall_score: 0,
+  };
   const pct = Math.round(safeConf.overall_score * 100);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-
       {/* Bank Details */}
       <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-100 lg:col-span-2">
         <div className="flex items-start justify-between mb-4">
@@ -40,9 +48,15 @@ export const AccountOverview: React.FC<AccountOverviewProps> = ({ info, confiden
               <Building2 size={22} />
             </div>
             <div>
-              <p className="text-xs text-slate-400 uppercase tracking-wider font-medium">Bank</p>
+              <p className="text-xs text-slate-400 uppercase tracking-wider font-medium">
+                Bank
+              </p>
               <h3 className="text-base font-bold text-slate-800 leading-tight">
-                {safeInfo.bank_name || <span className="text-slate-400 font-normal italic">Unknown Bank</span>}
+                {safeInfo.bank_name || (
+                  <span className="text-slate-400 font-normal italic">
+                    Unknown Bank
+                  </span>
+                )}
               </h3>
             </div>
           </div>
@@ -51,21 +65,34 @@ export const AccountOverview: React.FC<AccountOverviewProps> = ({ info, confiden
               {safeInfo.ifsc_code}
             </span>
           ) : (
-            <span className="px-2.5 py-1 bg-slate-100 text-slate-400 text-xs rounded-full">No IFSC</span>
+            <span className="px-2.5 py-1 bg-slate-100 text-slate-400 text-xs rounded-full">
+              No IFSC
+            </span>
           )}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <p className="text-xs text-slate-400 uppercase tracking-wider mb-0.5">Account Number</p>
+            <p className="text-xs text-slate-400 uppercase tracking-wider mb-0.5">
+              Account Number
+            </p>
             <p className="font-mono text-slate-700 font-semibold text-sm">
-              {safeInfo.account_number || <span className="text-slate-400 font-sans font-normal">—</span>}
+              {safeInfo.account_number || (
+                <span className="text-slate-400 font-sans font-normal">—</span>
+              )}
             </p>
           </div>
           <div>
-            <p className="text-xs text-slate-400 uppercase tracking-wider mb-0.5">Branch</p>
-            <p className="text-slate-700 font-medium text-sm truncate" title={safeInfo.branch || ''}>
-              {safeInfo.branch || <span className="text-slate-400 font-normal">—</span>}
+            <p className="text-xs text-slate-400 uppercase tracking-wider mb-0.5">
+              Branch
+            </p>
+            <p
+              className="text-slate-700 font-medium text-sm truncate"
+              title={safeInfo.branch || ""}
+            >
+              {safeInfo.branch || (
+                <span className="text-slate-400 font-normal">—</span>
+              )}
             </p>
           </div>
         </div>
@@ -78,9 +105,16 @@ export const AccountOverview: React.FC<AccountOverviewProps> = ({ info, confiden
             <User size={22} />
           </div>
           <div className="min-w-0">
-            <p className="text-xs text-slate-400 uppercase tracking-wider font-medium">Account Holder</p>
-            <h3 className="text-base font-bold text-slate-800 truncate leading-tight" title={safeInfo.account_holder || ''}>
-              {safeInfo.account_holder || <span className="text-slate-400 font-normal italic">—</span>}
+            <p className="text-xs text-slate-400 uppercase tracking-wider font-medium">
+              Account Holder
+            </p>
+            <h3
+              className="text-base font-bold text-slate-800 truncate leading-tight"
+              title={safeInfo.account_holder || ""}
+            >
+              {safeInfo.account_holder || (
+                <span className="text-slate-400 font-normal italic">—</span>
+              )}
             </h3>
           </div>
         </div>
@@ -108,8 +142,12 @@ export const AccountOverview: React.FC<AccountOverviewProps> = ({ info, confiden
             <ShieldCheck size={22} />
           </div>
           <div>
-            <p className="text-xs text-slate-400 uppercase tracking-wider font-medium">Parse Quality</p>
-            <h3 className="text-2xl font-bold text-slate-800 leading-none mt-0.5">{pct}%</h3>
+            <p className="text-xs text-slate-400 uppercase tracking-wider font-medium">
+              Parse Quality
+            </p>
+            <h3 className="text-2xl font-bold text-slate-800 leading-none mt-0.5">
+              {pct}%
+            </h3>
           </div>
         </div>
         <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
@@ -119,10 +157,10 @@ export const AccountOverview: React.FC<AccountOverviewProps> = ({ info, confiden
           />
         </div>
         <p className="text-xs text-slate-400 mt-2 text-right">
-          {safeConf.high_confidence_txns} / {safeConf.total_transactions} txns verified
+          {safeConf.high_confidence_txns} / {safeConf.total_transactions} txns
+          verified
         </p>
       </div>
-
     </div>
   );
 };
