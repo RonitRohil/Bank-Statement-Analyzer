@@ -5,6 +5,40 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-21 — BSA-07 lite: Single-statement recurring detection MVP
+
+**Type:** New feature  
+**Ticket:** BSA-07 lite (full cross-statement recurring deferred to Sprint-05 as BSA-07-full)  
+**Items closed:** CR-S3-01 (CV threshold), CR-S3-05 (recurring teaser test)
+
+**What was built:**
+
+- `backend/app/services/insights.py` — new `detect_recurring(merchant_insights)` function: returns merchants with `count ≥ 3` and CV `< 0.25`, sorted by count desc. Each entry includes `merchant`, `count`, `avg_amount`, `std_amount`, `cv`, `first_seen`, `last_seen`, `common_days`. Also updated the existing recurring teaser in `generate_insights()` from `cv < 0.15` → `cv < 0.25` (CR-S3-01 fix).
+- `backend/app/models/schemas.py` — added `recurring_candidates: List[Dict[str, Any]] = []` to `AnalysisResult`. Defaults to `[]` so existing tests remain unaffected.
+- `backend/app/routers/analyze.py` — calls `detect_recurring(merchant_insights)` after `generate_insights()` and stores result in `result["result"]["recurring_candidates"]`.
+- `frontend/types.ts` — added `RecurringCandidate` interface and `recurring_candidates?: RecurringCandidate[]` to `AnalysisResult`.
+- `frontend/components/MerchantInsights.tsx` — added `recurringCandidates` prop; builds a `Set` of recurring merchant names and renders a `↻` green pill next to any matching merchant name in the card grid.
+- `frontend/App.tsx` — passes `recurring_candidates ?? []` down to `MerchantInsights`.
+- `backend/tests/test_insights.py` — 4 new tests for `detect_recurring`: detected when CV low, excluded when CV high, excluded when count < 3, excludes UNKNOWN/OTHER (CR-S3-05 fix).
+- `docs/tech-debt.md` — BSA-07-full (cross-statement recurring) opened as new ⬜ item; CR-S3-01 and CR-S3-05 marked resolved.
+
+**Root cause (CR-S3-01):** CV threshold of 0.15 was too tight — real-world subscriptions with minor FX or usage variation had CVs of 0.16–0.24 and were silently excluded from the recurring teaser.
+
+**Files affected:**
+
+- `backend/app/services/insights.py`
+- `backend/app/models/schemas.py`
+- `backend/app/routers/analyze.py`
+- `frontend/types.ts`
+- `frontend/components/MerchantInsights.tsx`
+- `frontend/App.tsx`
+- `backend/tests/test_insights.py`
+- `docs/changelog.md`
+- `docs/tech-debt.md`
+- `docs/code-review.md`
+
+---
+
 ## 2026-06-21 — BSA-13: CSV / Excel export
 
 **Type:** New feature

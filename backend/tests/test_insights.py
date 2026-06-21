@@ -1,4 +1,4 @@
-from app.services.insights import generate_insights
+from app.services.insights import detect_recurring, generate_insights
 
 # Shared fixture: salary credit + varied debits across multiple merchants
 FIXTURE_TXN = [
@@ -170,7 +170,9 @@ def test_no_large_txns_no_large_insight():
             "narration": "Coffee",
         }
     ]
-    insights = generate_insights(small_txns, {"CAFE": {"count": 1, "avg_amount": 500.0, "std_amount": None}})
+    insights = generate_insights(
+        small_txns, {"CAFE": {"count": 1, "avg_amount": 500.0, "std_amount": None}}
+    )
     assert not any("above ₹10,000" in i for i in insights)
 
 
@@ -190,3 +192,68 @@ def test_unknown_merchant_excluded_from_frequent():
     }
     insights = generate_insights(txns, merchant_insights)
     assert not any("UNKNOWN" in i for i in insights)
+
+
+# ── detect_recurring tests ──────────────────────────────────────────────────
+
+
+def test_recurring_detected_when_cv_low():
+    merchant_insights = {
+        "NETFLIX": {
+            "count": 3,
+            "avg_amount": 649.0,
+            "std_amount": 5.0,  # CV = 0.0077 — well below 0.25
+            "first_seen": "2026-01-01",
+            "last_seen": "2026-03-01",
+            "common_days": [1],
+        }
+    }
+    result = detect_recurring(merchant_insights)
+    assert len(result) == 1
+    assert result[0]["merchant"] == "NETFLIX"
+    assert result[0]["cv"] < 0.25
+
+
+def test_recurring_excluded_when_cv_high():
+    merchant_insights = {
+        "AMAZON": {
+            "count": 5,
+            "avg_amount": 2000.0,
+            "std_amount": 1500.0,  # CV = 0.75 — above threshold
+            "first_seen": "2026-01-01",
+            "last_seen": "2026-03-01",
+            "common_days": [],
+        }
+    }
+    result = detect_recurring(merchant_insights)
+    assert result == []
+
+
+def test_recurring_excluded_when_count_below_3():
+    merchant_insights = {
+        "NETFLIX": {
+            "count": 2,
+            "avg_amount": 649.0,
+            "std_amount": 0.0,
+            "first_seen": "2026-01-01",
+            "last_seen": "2026-02-01",
+            "common_days": [1],
+        }
+    }
+    result = detect_recurring(merchant_insights)
+    assert result == []
+
+
+def test_recurring_excludes_unknown():
+    merchant_insights = {
+        "UNKNOWN": {
+            "count": 10,
+            "avg_amount": 100.0,
+            "std_amount": 1.0,
+            "first_seen": "2026-01-01",
+            "last_seen": "2026-03-01",
+            "common_days": [1],
+        }
+    }
+    result = detect_recurring(merchant_insights)
+    assert result == []

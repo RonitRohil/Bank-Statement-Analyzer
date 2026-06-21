@@ -49,7 +49,7 @@ Sprint-03 converted Sprint-02's sunk investment into working user-visible featur
 
 ## Issues Found
 
-### CR-S3-01 🟡 CV threshold of 0.15 may be too tight for some recurring merchants
+### CR-S3-01 ✅ CV threshold of 0.15 may be too tight for some recurring merchants — **FIXED 2026-06-21 (BSA-07 lite)**
 
 **File:** `backend/app/services/insights.py` — line ~55  
 **Severity:** 🟡 Medium (false negative — users miss a real insight)
@@ -102,7 +102,7 @@ The backend `SummaryResponse` doesn't emit a `currency` field. The frontend fall
 
 ---
 
-### CR-S3-05 🟢 `test_insights.py` doesn't cover the recurring teaser path
+### CR-S3-05 ✅ `test_insights.py` doesn't cover the recurring teaser path — **FIXED 2026-06-21 (BSA-07 lite)**
 
 **File:** `backend/tests/test_insights.py`  
 **Severity:** 🟢 Low (coverage gap)

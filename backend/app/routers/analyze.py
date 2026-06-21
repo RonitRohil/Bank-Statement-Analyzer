@@ -12,7 +12,7 @@ from app.db.crud import find_statement_by_hash, hash_file, save_statement
 from app.db.database import get_session
 from app.models.analyzer import BankStatementAnalyzer, TransactionPatternTrainer
 from app.models.schemas import AnalyzeResponse
-from app.services.insights import generate_insights
+from app.services.insights import detect_recurring, generate_insights
 from app.services.llm_enricher import enrich_with_llm
 
 router = APIRouter()
@@ -79,6 +79,9 @@ async def analyze_statement(
             )
             result["result"]["insights"] = generate_insights(
                 enriched, result["result"]["merchant_insights"]
+            )
+            result["result"]["recurring_candidates"] = detect_recurring(
+                result["result"]["merchant_insights"]
             )
 
         if persist:

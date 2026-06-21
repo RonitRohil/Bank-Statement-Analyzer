@@ -1,6 +1,6 @@
 # Technical Debt Report — Bank Statement Analyzer
 
-**Original:** 2026-05-29 · **Updated:** 2026-06-21 (post-BSA-13 export feature)
+**Original:** 2026-05-29 · **Updated:** 2026-06-21 (post-BSA-07 lite recurring detection)
 **Reviewed by:** Claude (Cowork)
 **Project:** Bank Statement Analyzer (FastAPI/React/TypeScript)
 
@@ -11,15 +11,26 @@ Status: ✅ Resolved · ⚠️ Reopened · ⬜ Open
 
 ## Status Snapshot (post-BSA-19 — Sprint-04)
 
-| Resolved ✅                                           | Open ⬜                              |
-| ----------------------------------------------------- | ------------------------------------ |
-| TD-001–006, 009–015, 017, 020, 021, 022, 024, 027–041 | TD-007, 008, 018, 019, 023, 025, 026 |
+| Resolved ✅                                                               | Open ⬜                                           |
+| ------------------------------------------------------------------------- | ------------------------------------------------- |
+| TD-001–006, 009–015, 017, 020, 021, 022, 024, 027–041; CR-S3-01, CR-S3-05 | TD-007, 008, 018, 019, 023, 025, 026; BSA-07-full |
 
-**34 resolved, 7 open, TD-016 folded into TD-031 (resolved)**
+**34 resolved, 7 open, TD-016 folded into TD-031 (resolved). CR-S3-01 and CR-S3-05 resolved via BSA-07 lite.**
 
 > BSA-19 (Sprint-04) closed TD-024 at file level (SHA-256 `file_hash` on `StatementDB`). Sprint-04 prompt 03 added row-level dedup inside the parser (`_deduplicate_transactions` on compound key `date+amount+narration+balance`).  
 > Sprint-04 housekeeping (first commit) closed four items: TD-039 (`insights` field added to `AnalysisResult`), TD-040 (`currency` field added to `SummaryResponse`), TD-041 (`backend-v2/` renamed to `backend/` on disk; stale references cleaned from CLAUDE.md), and TD-038 (Category column with AI badge added to `TransactionTable.tsx` — `title="AI-categorized"` for accessibility).  
-> **BSA-13 ✅ (2026-06-21):** CSV/Excel export shipped — `POST /api/export/transactions`, `exportTransactions()` in `api.ts`, "↓ CSV" + "↓ Excel" buttons in `TransactionTable`.
+> **BSA-13 ✅ (2026-06-21):** CSV/Excel export shipped — `POST /api/export/transactions`, `exportTransactions()` in `api.ts`, "↓ CSV" + "↓ Excel" buttons in `TransactionTable`.  
+> **BSA-07 lite ✅ (2026-06-21):** Recurring detection MVP — `detect_recurring()` + `recurring_candidates` in schema + ↻ pill in merchant table. CV threshold raised to 0.25 (CR-S3-01 ✅). Four `detect_recurring` tests added (CR-S3-05 ✅). Full cross-statement recurring (BSA-07-full) deferred to Sprint-05.
+
+---
+
+## BSA-07-full ⬜ 🟡 Cross-statement recurring detection requires persistence
+
+**Ticket:** BSA-07-full (deferred from BSA-07 lite, Sprint-04)  
+**Score:** Impact 4 · Risk 2 · Effort 4 → **Priority 20**  
+**Description:** `detect_recurring()` (BSA-07 lite) detects recurring merchants within a single statement. True recurring detection — confirming that the same subscription or charge appears across multiple uploaded statements for the same account — requires comparing `recurring_candidates` across `StatementDB` rows. The `StatementDB` persistence layer (BSA-19) is now in place, so the data is available; this is purely a query + aggregation gap.  
+**Fix:** Sprint-05 — aggregate `recurring_candidates` JSON across `StatementDB` rows matching the same `account_number`, group by merchant, and surface cross-statement recurring with confidence scores based on inter-statement frequency.  
+**Effort:** 1–2 days (new CRUD query + API field + UI).
 
 ---
 

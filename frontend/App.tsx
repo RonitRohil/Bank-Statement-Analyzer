@@ -139,7 +139,10 @@ const App: React.FC = () => {
             </ErrorBoundary>
 
             <ErrorBoundary>
-              <MerchantInsights insights={data.merchant_insights} />
+              <MerchantInsights
+                insights={data.merchant_insights}
+                recurringCandidates={data.recurring_candidates ?? []}
+              />
             </ErrorBoundary>
 
             <ErrorBoundary>
