@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { UploadCloud, FileText, Loader2, AlertCircle, X } from 'lucide-react';
+import React, { useState, useRef } from "react";
+import { UploadCloud, FileText, Loader2, AlertCircle, X } from "lucide-react";
 
 interface FileUploadProps {
   onFileSelect: (file: File) => void;
@@ -8,11 +8,11 @@ interface FileUploadProps {
   onDismissError?: () => void;
 }
 
-export const FileUpload: React.FC<FileUploadProps> = ({ 
-  onFileSelect, 
-  isLoading, 
-  error, 
-  onDismissError 
+export const FileUpload: React.FC<FileUploadProps> = ({
+  onFileSelect,
+  isLoading,
+  error,
+  onDismissError,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -42,7 +42,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     if (e.target.files && e.target.files.length > 0) {
       onFileSelect(e.target.files[0]);
       // Reset the input value to allow re-selecting the same file if needed (e.g. after error)
-      e.target.value = '';
+      e.target.value = "";
     }
   };
 
@@ -56,11 +56,11 @@ export const FileUpload: React.FC<FileUploadProps> = ({
             <p className="text-sm mt-1 opacity-90">{error}</p>
           </div>
           {onDismissError && (
-            <button 
+            <button
               onClick={(e) => {
                 e.stopPropagation();
                 onDismissError();
-              }} 
+              }}
               className="text-red-400 hover:text-red-600 transition-colors p-1"
               aria-label="Dismiss error"
             >
@@ -77,9 +77,9 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         onDrop={!isLoading ? handleDrop : undefined}
         className={`
           relative flex flex-col items-center justify-center p-12 border-2 border-dashed rounded-xl transition-all duration-300 cursor-pointer
-          ${isDragging ? 'border-indigo-500 bg-indigo-50' : 'border-slate-300 bg-white hover:border-indigo-400 hover:bg-slate-50'}
-          ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}
-          ${error ? 'border-red-300 bg-red-50/30' : ''}
+          ${isDragging ? "border-indigo-500 bg-indigo-50" : "border-slate-300 bg-white hover:border-indigo-400 hover:bg-slate-50"}
+          ${isLoading ? "opacity-50 cursor-not-allowed" : ""}
+          ${error ? "border-red-300 bg-red-50/30" : ""}
         `}
       >
         <input
@@ -94,12 +94,18 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         {isLoading ? (
           <div className="flex flex-col items-center animate-pulse">
             <Loader2 className="w-16 h-16 text-indigo-600 animate-spin mb-4" />
-            <p className="text-lg font-medium text-slate-700">Analyzing Statement...</p>
-            <p className="text-sm text-slate-500 mt-2">This usually takes a few seconds</p>
+            <p className="text-lg font-medium text-slate-700">
+              Analyzing Statement...
+            </p>
+            <p className="text-sm text-slate-500 mt-2">
+              This usually takes a few seconds
+            </p>
           </div>
         ) : (
           <>
-            <div className={`p-4 rounded-full bg-indigo-50 mb-4 ${isDragging ? 'scale-110' : ''} transition-transform`}>
+            <div
+              className={`p-4 rounded-full bg-indigo-50 mb-4 ${isDragging ? "scale-110" : ""} transition-transform`}
+            >
               <UploadCloud className="w-10 h-10 text-indigo-600" />
             </div>
             <h3 className="text-xl font-semibold text-slate-800 mb-2">
