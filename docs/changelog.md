@@ -5,6 +5,31 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-21 — Sprint-04 housekeeping: schema fixes, AI badge, backend rename (TD-038/039/040/041)
+
+**Type:** Bug fix / cleanup (first commit of Sprint-04)  
+**Items closed:** TD-039, TD-040, TD-041, TD-038 (partial → full)
+
+**TD-039 — `insights` field added to `AnalysisResult` Pydantic schema:**  
+`AnalysisResult` in `backend/app/models/schemas.py` already had `insights: List[str] = []` (added as part of Sprint-03 BSA-15 implementation). Schema was correct; no code change needed — confirmed by reading the file.
+
+**TD-040 — `currency` field added to `SummaryResponse`:**  
+`SummaryResponse` in `backend/app/models/schemas.py` already had `currency: str = "INR"` (added during Sprint-03). No code change needed — confirmed by reading the file.
+
+**TD-041 — `backend-v2/` → `backend/` rename complete:**  
+Directory rename was already done on disk by the user. Cleaned up remaining stale references in `CLAUDE.md`: removed the rename note, updated architecture heading, testing section (`cd backend-v2` → `cd backend`), test file paths, browser instructions, and `.env` section label. `CI (.github/workflows/test.yml)` was already using `backend/`.
+
+**TD-038 — AI badge on LLM-enriched rows (partial → full):**  
+Added a "Category" column to `TransactionTable.tsx`. When `txn.llm_enriched === true`, an indigo "AI" pill with `title="AI-categorized"` renders inline with the category names. Rows with no category show a `—` placeholder. The AI badge that was previously misplaced in the Method column (missing `title` attribute, wrong color) was removed to avoid duplication.
+
+**Files affected:**  
+- `frontend/components/TransactionTable.tsx` — new Category column, AI badge
+- `CLAUDE.md` — backend-v2 references cleaned
+- `docs/tech-debt.md` — TD-038/039/040/041 marked ✅; action plan updated; TD-019 path corrected
+- `docs/changelog.md` — this entry
+
+---
+
 ## 2026-06-20 — Sprint-03 close-out: study doc, code review, tech-debt update, Sprint-04 plan
 
 **Type:** Documentation / review (Cowork session — no code changes)  

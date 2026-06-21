@@ -24,6 +24,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
               <th className="px-6 py-3 font-semibold">Date</th>
               <th className="px-6 py-3 font-semibold">Narration</th>
               <th className="px-6 py-3 font-semibold">Method</th>
+              <th className="px-6 py-3 font-semibold">Category</th>
               <th className="px-6 py-3 font-semibold text-right">Amount</th>
               <th className="px-6 py-3 font-semibold text-right">Balance</th>
               <th className="px-6 py-3 font-semibold text-center">Type</th>
@@ -42,16 +43,26 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                   )}
                 </td>
                 <td className="px-6 py-4">
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">
-                      {txn.payment_method || 'OTH'}
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">
+                    {txn.payment_method || 'OTH'}
+                  </span>
+                </td>
+                <td className="px-6 py-4">
+                  {txn.category && txn.category.length > 0 ? (
+                    <span className="flex items-center gap-1">
+                      <span className="text-xs text-slate-600">{txn.category.join(', ')}</span>
+                      {txn.llm_enriched && (
+                        <span
+                          title="AI-categorized"
+                          className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-indigo-100 text-indigo-700"
+                        >
+                          AI
+                        </span>
+                      )}
                     </span>
-                    {txn.llm_enriched && (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold bg-violet-100 text-violet-700">
-                        AI
-                      </span>
-                    )}
-                  </div>
+                  ) : (
+                    <span className="text-slate-400 text-xs">—</span>
+                  )}
                 </td>
                 <td className={`px-6 py-4 text-right font-bold ${
                   txn.transaction_type === 'CREDIT' ? 'text-emerald-600' : 'text-rose-600'

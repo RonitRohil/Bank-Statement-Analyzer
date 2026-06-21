@@ -11,7 +11,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Key Features**: Multi-format document parsing, narration analysis (UPI, IMPS, NEFT, card payments), merchant insights, confidence scoring, account metadata extraction, **LLM categorization fallback (BSA-04)**, **financial summary endpoint (BSA-05)**
 
 > **History:** Flask backend was removed Sprint-03 (BSA-18, 2026-06-20). FastAPI (`backend/`, formerly `backend-v2/`) is the canonical and only backend. See `docs/study/flask-decommission-bsa18.md`.
-> **Rename note (TD-041):** Directory is still `backend-v2/` on disk. Run `rmdir backend && git mv backend-v2 backend` locally to complete. All docs already reference `backend/`.
 
 ## Development Setup
 
@@ -84,7 +83,7 @@ Frontend dashboard
     └─ TransactionTable: searchable transaction list with payment methods
 ```
 
-### Backend Structure (FastAPI — backend-v2/)
+### Backend Structure (FastAPI — backend/)
 
 | Layer       | Location                     | Purpose                                                                                        |
 | ----------- | ---------------------------- | ---------------------------------------------------------------------------------------------- |
@@ -278,19 +277,13 @@ For each unique merchant (or receiver if merchant not found):
 
 **Open:**
 
-1. **AI badge on enriched rows (TD-038 partial)**: `llm_enriched` is in `types.ts` but `TransactionTable.tsx` doesn't render it. Sprint-04 P0.
+1. **No persistence (BSA-19)**: Every upload re-parses from scratch; no history store. Sprint-04 P0.
 
-2. **`insights` missing from Pydantic schema (TD-039)**: `AnalysisResult` in `schemas.py` lacks `insights: list[str]`. Sprint-04 first commit.
+2. **No Authentication**: Endpoint is fully public. No auth layer planned until user accounts are in scope.
 
-3. **`backend-v2/` rename pending (TD-041)**: Run `rmdir backend && git mv backend-v2 backend` locally. Sprint-04 first commit.
+3. **PDF Limitations**: Scanned (image-based) PDFs fail silently; only works with digital/table-based PDFs. Needs OCR (Tesseract or Azure) to fix.
 
-4. **No persistence (BSA-19)**: Every upload re-parses from scratch; no history store. Sprint-04 P0.
-
-5. **No Authentication**: Endpoint is fully public. No auth layer planned until user accounts are in scope.
-
-6. **PDF Limitations**: Scanned (image-based) PDFs fail silently; only works with digital/table-based PDFs. Needs OCR (Tesseract or Azure) to fix.
-
-7. **No Balance Validation**: Running balance not validated against credit/debit deltas; inconsistent data passes through undetected.
+4. **No Balance Validation**: Running balance not validated against credit/debit deltas; inconsistent data passes through undetected.
 
 ## Common Development Tasks
 
@@ -328,14 +321,14 @@ For each unique merchant (or receiver if merchant not found):
 ### Tests (pytest — FastAPI backend)
 
 ```bash
-cd backend-v2
+cd backend
 # activate venv first
 pytest                          # run all tests (18 pass)
 pytest tests/test_analyze.py -v         # verbose output for a single file
 pytest -k "test_upi"                    # run tests matching a pattern
 ```
 
-Test files in `backend-v2/tests/`: `test_health.py`, `test_analyze.py`, `test_summary.py`, `test_llm_enricher.py`. Client fixture via `ASGITransport` in `backend-v2/conftest.py`.
+Test files in `backend/tests/`: `test_health.py`, `test_analyze.py`, `test_summary.py`, `test_llm_enricher.py`. Client fixture via `ASGITransport` in `backend/conftest.py`.
 
 **Coverage gaps (see `docs/testing-strategy.md`):** Frontend has no test suite. PDF multi-page path and the enrichment-down degradation path need integration fixtures.
 
@@ -350,7 +343,7 @@ curl http://localhost:8000/api/health   # {"status": "ok", "service": "bank-stat
 
 ### Browser
 
-1. Start backend (`cd backend-v2 && uvicorn app.main:app --reload --port 8000`) and frontend dev servers
+1. Start backend (`cd backend && uvicorn app.main:app --reload --port 8000`) and frontend dev servers
 2. Open http://localhost:3000
 3. Upload test files
 4. Check browser DevTools Network tab
@@ -363,7 +356,7 @@ curl http://localhost:8000/api/health   # {"status": "ok", "service": "bank-stat
 VITE_API_URL=http://localhost:8000
 ```
 
-**.env (backend-v2 — optional overrides via pydantic-settings)**
+**.env (backend/ — optional overrides via pydantic-settings)**
 
 ```
 CORS_ORIGINS=["http://localhost:3000"]
