@@ -5,6 +5,31 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-21 — BSA-13: CSV / Excel export
+
+**Type:** New feature
+**Ticket:** BSA-13
+
+**What was built:**
+
+- `backend/app/routers/export.py` — `POST /api/export/transactions` accepts a list of `Transaction` objects and a format (`csv` or `xlsx`). Uses pandas + openpyxl; returns a `StreamingResponse` (no temp files written to disk). Excel output auto-fits column widths (capped at 50 chars). Multi-category lists joined with `", "`.
+- Registered in `backend/app/main.py`.
+- `frontend/services/api.ts` — `exportTransactions()` POSTs to the endpoint, creates a blob URL, and triggers the browser's native download mechanism.
+- `frontend/components/TransactionTable.tsx` — "↓ CSV" and "↓ Excel" buttons added to the table header. Both are disabled while exporting or when the transaction list is empty.
+- `backend/tests/test_export.py` — 3 tests: CSV 200 + header check, XLSX 200 + content-type, empty list → 400.
+- `backend/conftest.py` — `sample_transactions_payload` fixture added (3 minimal valid transactions).
+
+**Files affected:**
+
+- `backend/app/routers/export.py` (new)
+- `backend/app/main.py`
+- `frontend/services/api.ts`
+- `frontend/components/TransactionTable.tsx`
+- `backend/tests/test_export.py` (new)
+- `backend/conftest.py`
+
+---
+
 ## 2026-06-21 — TD-024 (row-level): Transaction deduplication inside parser
 
 **Type:** Bug fix / defensive guard  
@@ -20,6 +45,7 @@ Format: `[Date] — [Type] — [Short description]`
 **Root cause:** Multi-page PDF stitching (TD-021) can extract the same boundary row from adjacent pages twice. Now that persistence is live (BSA-19), duplicates would also land in `TransactionDB`. Row-level dedup prevents dirty data before it reaches confidence scoring or the DB.
 
 **Files affected:**
+
 - `backend/app/models/analyzer.py`
 - `backend/tests/test_dedup.py` (new)
 

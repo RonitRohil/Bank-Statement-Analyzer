@@ -65,7 +65,35 @@ export const uploadBankStatement = async (file: File): Promise<ApiResponse> => {
   }
 };
 
-export const getSummary = async (transactions: Transaction[]): Promise<SummaryResponse> => {
+export async function exportTransactions(
+  transactions: Transaction[],
+  format: "csv" | "xlsx",
+  filename: string = "transactions",
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/export/transactions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ transactions, format, filename }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Export failed: ${response.statusText}`);
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${filename}.${format}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export const getSummary = async (
+  transactions: Transaction[],
+): Promise<SummaryResponse> => {
   const res = await fetch(`${API_BASE}/api/analyze/bank/summary`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
