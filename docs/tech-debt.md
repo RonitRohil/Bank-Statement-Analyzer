@@ -17,7 +17,7 @@ Status: ✅ Resolved · ⚠️ Reopened · ⬜ Open
 
 **34 resolved, 7 open, TD-016 folded into TD-031 (resolved)**
 
-> BSA-19 (Sprint-04) closed TD-024 (statement deduplication via SHA-256 `file_hash` on `StatementDB`).  
+> BSA-19 (Sprint-04) closed TD-024 at file level (SHA-256 `file_hash` on `StatementDB`). Sprint-04 prompt 03 added row-level dedup inside the parser (`_deduplicate_transactions` on compound key `date+amount+narration+balance`).  
 > Sprint-04 housekeeping (first commit) closed four items: TD-039 (`insights` field added to `AnalysisResult`), TD-040 (`currency` field added to `SummaryResponse`), TD-041 (`backend-v2/` renamed to `backend/` on disk; stale references cleaned from CLAUDE.md), and TD-038 (Category column with AI badge added to `TransactionTable.tsx` — `title="AI-categorized"` for accessibility).
 
 ---
@@ -204,12 +204,15 @@ These were logged against the two new features and the cutover. Source: `docs/co
 
 ---
 
-### TD-024 ✅ 🟡 No transaction deduplication — **FIXED 2026-06-21 (BSA-19)**
+### TD-024 ✅ 🟡 No transaction deduplication — **FIXED 2026-06-21 (BSA-19 + Sprint-04 prompt 03)**
 
 **Files:** `analyzeModel.py` / `analyzer.py`  
 **Score:** Impact 3 · Risk 2 · Effort 2 → **Priority 20**  
 **Description:** Overlapping table extractions (common in multi-page PDFs) can produce duplicate transactions, inflating totals and merchant insights. Dedupe on `(date, amount, narration, balance)` before scoring.  
-**Effort:** 1–2 hours.
+**Effort:** 1–2 hours.  
+**Fix (two layers):**
+- *File-level* (BSA-19): SHA-256 `file_hash` on `StatementDB` prevents re-parsing the same file.
+- *Row-level* (Sprint-04 prompt 03): `BankStatementAnalyzer._deduplicate_transactions()` — compound key `(date, amount, narration[:100], balance)`, keeps first occurrence, runs after extraction before confidence scoring, in both Excel/CSV and PDF paths. 7 unit tests in `backend/tests/test_dedup.py`.
 
 ---
 
@@ -328,7 +331,7 @@ Regression is now caught on every push.
 | TD-021 | ✅     | 🟠  | Backend     | Multi-page PDF rows dropped                                         |
 | TD-022 | ✅     | 🟠  | Backend     | Dead Pennyless fn deleted (Flask)                                   |
 | TD-023 | ⬜     | 🟡  | Backend     | Validation trusts extension not bytes                               |
-| TD-024 | ✅     | 🟡  | Backend     | No transaction deduplication — SHA-256 dedup via BSA-19             |
+| TD-024 | ✅     | 🟡  | Backend     | No transaction deduplication — file-level (BSA-19) + row-level (Sprint-04 prompt 03) |
 | TD-025 | ⬜     | 🟡  | Backend     | txn_reference regex over-greedy                                     |
 | TD-026 | ⬜     | 🟡  | Backend     | Confidence penalizes balance-less formats                           |
 | TD-027 | ✅     | 🟡  | Backend     | /api/health added to Flask                                          |

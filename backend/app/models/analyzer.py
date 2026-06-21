@@ -198,6 +198,27 @@ class BankStatementAnalyzer:
                 "result": {},
             }
 
+    def _deduplicate_transactions(self, transactions: list[dict]) -> list[dict]:
+        """Remove exact duplicates by (date, amount, narration, balance). Keeps first occurrence."""
+        seen: set[tuple] = set()
+        deduped: list[dict] = []
+        dropped = 0
+        for txn in transactions:
+            key = (
+                txn.get("transaction_date"),
+                txn.get("amount"),
+                txn.get("narration", "")[:100],
+                txn.get("balance"),
+            )
+            if key in seen:
+                dropped += 1
+                continue
+            seen.add(key)
+            deduped.append(txn)
+        if dropped > 0:
+            logger.info("[DEDUP] Removed %d duplicate transaction(s)", dropped)
+        return deduped
+
     @staticmethod
     def _read_csv_raw(file_path):
         """Read a CSV using Python's csv module to handle variable-width metadata rows.
@@ -440,6 +461,8 @@ class BankStatementAnalyzer:
                     )
 
             meta_info = self._extract_metadata_from_df(raw_df)
+
+            transactions = self._deduplicate_transactions(transactions)
 
             for txn in transactions:
                 txn["confidence_score"] = self.calculate_confidence_score(txn)
@@ -700,6 +723,8 @@ class BankStatementAnalyzer:
 
             # Account metadata from full text
             meta_info = self._extract_metadata_from_text(all_text)
+
+            transactions = self._deduplicate_transactions(transactions)
 
             # Score confidence for every transaction (consistent with Excel path)
             for txn in transactions:

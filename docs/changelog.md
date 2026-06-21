@@ -5,6 +5,26 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-21 — TD-024 (row-level): Transaction deduplication inside parser
+
+**Type:** Bug fix / defensive guard  
+**Ticket:** TD-024 (row-level variant)  
+**Items closed:** TD-024 (row-level dedup complement to file-hash dedup shipped in BSA-19)
+
+**What was built:**
+
+- `BankStatementAnalyzer._deduplicate_transactions()` — removes duplicate transaction dicts using a `(transaction_date, amount, narration[:100], balance)` compound key. Keeps first occurrence. Logs at INFO only when duplicates are actually dropped.
+- Called after the transaction list is fully built, before confidence scoring, in both `_process_excel_csv()` and `_process_pdf_transactions()`.
+- `backend/tests/test_dedup.py` — 7 unit tests covering: exact duplicate removed, near-duplicate kept, `None` fields handled, no-op on clean input, first occurrence preserved, INFO log emitted on drop, no log on clean statement.
+
+**Root cause:** Multi-page PDF stitching (TD-021) can extract the same boundary row from adjacent pages twice. Now that persistence is live (BSA-19), duplicates would also land in `TransactionDB`. Row-level dedup prevents dirty data before it reaches confidence scoring or the DB.
+
+**Files affected:**
+- `backend/app/models/analyzer.py`
+- `backend/tests/test_dedup.py` (new)
+
+---
+
 ## 2026-06-21 — BSA-19: SQLite persistence layer (Sprint-04)
 
 **Type:** New feature  
