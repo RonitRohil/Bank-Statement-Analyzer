@@ -277,7 +277,7 @@ For each unique merchant (or receiver if merchant not found):
 
 **Open:**
 
-1. **No persistence (BSA-19)**: Every upload re-parses from scratch; no history store. Sprint-04 P0.
+1. ~~**No persistence (BSA-19)**~~: **Fixed (2026-06-21).** SQLite via SQLModel. `POST ?persist=true` stores statements + transactions; SHA-256 dedup prevents re-parsing the same file. `GET /api/statements` lists history. Alembic migrations in `backend/alembic/`.
 
 2. **No Authentication**: Endpoint is fully public. No auth layer planned until user accounts are in scope.
 
@@ -364,6 +364,7 @@ MAX_UPLOAD_SIZE_MB=20
 DEBUG=false
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=qwen2.5:7b
+DATABASE_URL=sqlite:///./statements.db
 ```
 
 ## Technology Stack
@@ -378,6 +379,8 @@ OLLAMA_MODEL=qwen2.5:7b
 - Frontend build outputs to `dist/`
 - Backend debug mode should be disabled in production
 - `uploads/` directory grows unbounded; needs cleanup strategy
+- SQLite DB at `statements.db` (created in the directory where uvicorn is launched, next to `run.py`). Back it up with `cp statements.db statements.db.bak`.
+- **Encryption at rest:** No encryption is applied to `statements.db`. It contains real financial data (account numbers, amounts, narrations with UPI IDs). Users are responsible for OS-level full-disk encryption. Must be revisited before any networked or multi-user deployment. See `docs/adr-002-persistence.md` footnote.
 
 ---
 

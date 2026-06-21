@@ -9,14 +9,15 @@ Status: ✅ Resolved · ⚠️ Reopened · ⬜ Open
 
 ---
 
-## Status Snapshot (post-Sprint-04 housekeeping)
+## Status Snapshot (post-BSA-19 — Sprint-04)
 
-| Resolved ✅                                           | Open ⬜                        |
-| ----------------------------------------------------- | ------------------------------ |
-| TD-001–006, 009–015, 017, 020, 021, 022, 027–041      | TD-007, 008, 018, 019, 023–026 |
+| Resolved ✅                                           | Open ⬜                              |
+| ----------------------------------------------------- | ------------------------------------ |
+| TD-001–006, 009–015, 017, 020, 021, 022, 024, 027–041 | TD-007, 008, 018, 019, 023, 025, 026 |
 
-**33 resolved, 8 open, TD-016 folded into TD-031 (resolved)**
+**34 resolved, 7 open, TD-016 folded into TD-031 (resolved)**
 
+> BSA-19 (Sprint-04) closed TD-024 (statement deduplication via SHA-256 `file_hash` on `StatementDB`).  
 > Sprint-04 housekeeping (first commit) closed four items: TD-039 (`insights` field added to `AnalysisResult`), TD-040 (`currency` field added to `SummaryResponse`), TD-041 (`backend-v2/` renamed to `backend/` on disk; stale references cleaned from CLAUDE.md), and TD-038 (Category column with AI badge added to `TransactionTable.tsx` — `title="AI-categorized"` for accessibility).
 
 ---
@@ -203,7 +204,7 @@ These were logged against the two new features and the cutover. Source: `docs/co
 
 ---
 
-### TD-024 ⬜ 🟡 No transaction deduplication
+### TD-024 ✅ 🟡 No transaction deduplication — **FIXED 2026-06-21 (BSA-19)**
 
 **Files:** `analyzeModel.py` / `analyzer.py`  
 **Score:** Impact 3 · Risk 2 · Effort 2 → **Priority 20**  
@@ -275,19 +276,19 @@ Regression is now caught on every push.
 
 ### Sprint-04 Housekeeping (first commit) — Completed ✅
 
-| ID     | Fix                                                     | Status  |
-| ------ | ------------------------------------------------------- | ------- |
-| TD-039 | Add `insights` to `AnalysisResult` Pydantic schema      | ✅ Done |
-| TD-040 | Add `currency` to `SummaryResponse`                     | ✅ Done |
-| TD-041 | Rename `backend-v2/` → `backend/`; clean CLAUDE.md      | ✅ Done |
-| TD-038 | AI badge on enriched rows in `TransactionTable.tsx`     | ✅ Done |
+| ID     | Fix                                                 | Status  |
+| ------ | --------------------------------------------------- | ------- |
+| TD-039 | Add `insights` to `AnalysisResult` Pydantic schema  | ✅ Done |
+| TD-040 | Add `currency` to `SummaryResponse`                 | ✅ Done |
+| TD-041 | Rename `backend-v2/` → `backend/`; clean CLAUDE.md  | ✅ Done |
+| TD-038 | AI badge on enriched rows in `TransactionTable.tsx` | ✅ Done |
 
 ### Sprint-04 P0 (remaining)
 
-| ID     | Fix                                                 | Est.  |
-| ------ | --------------------------------------------------- | ----- |
-| TD-024 | Transaction deduplication (higher risk post-TD-021) | 1–2h  |
-| TD-023 | Magic-byte upload validation                        | 1–2h  |
+| ID     | Fix                                                 | Est. |
+| ------ | --------------------------------------------------- | ---- |
+| TD-024 | Transaction deduplication (higher risk post-TD-021) | 1–2h |
+| TD-023 | Magic-byte upload validation                        | 1–2h |
 
 ### Sprint-04/05 (architectural)
 
@@ -302,49 +303,49 @@ Regression is now caught on every push.
 
 ## Full Item Table
 
-| ID     | Status | Sev | Area        | Description                                                       |
-| ------ | ------ | --- | ----------- | ----------------------------------------------------------------- |
-| TD-001 | ✅     | 🔴  | Backend     | requirements.txt UTF-16 — CI guard added (BSA-18)                 |
-| TD-002 | ✅     | 🔴  | Backend     | Config integration vars defined                                   |
-| TD-003 | ✅     | 🔴  | Backend     | .env.example added                                                |
-| TD-004 | ✅     | 🔴  | Backend     | Flask debug env-controlled                                        |
-| TD-005 | ✅     | 🔴  | Backend     | Uploaded files cleaned up                                         |
-| TD-006 | ✅     | 🟠  | Backend     | Dead classes removed                                              |
-| TD-007 | ⬜     | 🟠  | Backend     | Monolithic 1,280-line model                                       |
-| TD-008 | ⬜     | 🟠  | Backend     | Column detection duplicated                                       |
-| TD-009 | ✅     | 🟠  | Backend     | sklearn imports removed                                           |
-| TD-010 | ✅     | 🟠  | Frontend    | API URL via env var                                               |
-| TD-011 | ✅     | 🟠  | Backend     | File size/ext validation (ext-only)                               |
-| TD-012 | ✅     | 🟡  | Backend     | logging replaces print                                            |
-| TD-013 | ✅     | 🟡  | Backend     | Double assignment fixed                                           |
-| TD-014 | ✅     | 🟡  | Backend     | Dead vars removed                                                 |
-| TD-015 | ✅     | 🟡  | Backend     | PDF confidence_score added                                        |
-| TD-016 | ✅     | 🟠  | Testing     | Folded into TD-031 (Flask + FastAPI suites both exist)            |
-| TD-017 | ✅     | 🟡  | Backend     | CORS default tightened (Flask)                                    |
-| TD-018 | ⬜     | 🟡  | Frontend    | Table renders all rows                                            |
-| TD-019 | ⬜     | 🟢  | Infra       | No Docker                                                         |
-| TD-020 | ✅     | 🟢  | Repo        | .gitIgnore → .gitignore                                           |
-| TD-021 | ✅     | 🟠  | Backend     | Multi-page PDF rows dropped                                       |
-| TD-022 | ✅     | 🟠  | Backend     | Dead Pennyless fn deleted (Flask)                                 |
-| TD-023 | ⬜     | 🟡  | Backend     | Validation trusts extension not bytes                             |
-| TD-024 | ⬜     | 🟡  | Backend     | No transaction deduplication                                      |
-| TD-025 | ⬜     | 🟡  | Backend     | txn_reference regex over-greedy                                   |
-| TD-026 | ⬜     | 🟡  | Backend     | Confidence penalizes balance-less formats                         |
-| TD-027 | ✅     | 🟡  | Backend     | /api/health added to Flask                                        |
-| TD-028 | ✅     | 🔴  | FastAPI     | reload=True hardcoded in run.py                                   |
-| TD-029 | ✅     | 🔴  | FastAPI     | Dead `import requests` + dep in requirements                      |
-| TD-030 | ✅     | 🟠  | FastAPI     | CORS wildcards with allow_credentials=True                        |
-| TD-031 | ✅     | 🟠  | FastAPI     | FastAPI integration tests added (BSA-10)                          |
-| TD-032 | ✅     | 🟡  | FastAPI     | UPLOAD_DIR is cwd-relative, not file-relative                     |
-| TD-033 | ✅     | 🔴  | FastAPI/LLM | Enricher double-indexes results onto wrong txn — fixed Sprint-03  |
-| TD-034 | ✅     | 🟠  | FastAPI/LLM | Enrichment runs after aggregates computed — fixed Sprint-03       |
-| TD-035 | ✅     | 🟠  | FastAPI/LLM | Enrichment bounded — Semaphore + wait_for + cap — fixed Sprint-03 |
-| TD-036 | ✅     | 🟠  | FastAPI     | Summary endpoint accepts untyped list[dict] — fixed Sprint-03     |
-| TD-037 | ✅     | 🟠  | Frontend    | Stale localhost:5000 strings after cutover — fixed Sprint-03      |
-| TD-038 | ✅     | 🟡  | Frontend    | Category column + AI badge on LLM-enriched rows — done Sprint-04  |
+| ID     | Status | Sev | Area        | Description                                                         |
+| ------ | ------ | --- | ----------- | ------------------------------------------------------------------- |
+| TD-001 | ✅     | 🔴  | Backend     | requirements.txt UTF-16 — CI guard added (BSA-18)                   |
+| TD-002 | ✅     | 🔴  | Backend     | Config integration vars defined                                     |
+| TD-003 | ✅     | 🔴  | Backend     | .env.example added                                                  |
+| TD-004 | ✅     | 🔴  | Backend     | Flask debug env-controlled                                          |
+| TD-005 | ✅     | 🔴  | Backend     | Uploaded files cleaned up                                           |
+| TD-006 | ✅     | 🟠  | Backend     | Dead classes removed                                                |
+| TD-007 | ⬜     | 🟠  | Backend     | Monolithic 1,280-line model                                         |
+| TD-008 | ⬜     | 🟠  | Backend     | Column detection duplicated                                         |
+| TD-009 | ✅     | 🟠  | Backend     | sklearn imports removed                                             |
+| TD-010 | ✅     | 🟠  | Frontend    | API URL via env var                                                 |
+| TD-011 | ✅     | 🟠  | Backend     | File size/ext validation (ext-only)                                 |
+| TD-012 | ✅     | 🟡  | Backend     | logging replaces print                                              |
+| TD-013 | ✅     | 🟡  | Backend     | Double assignment fixed                                             |
+| TD-014 | ✅     | 🟡  | Backend     | Dead vars removed                                                   |
+| TD-015 | ✅     | 🟡  | Backend     | PDF confidence_score added                                          |
+| TD-016 | ✅     | 🟠  | Testing     | Folded into TD-031 (Flask + FastAPI suites both exist)              |
+| TD-017 | ✅     | 🟡  | Backend     | CORS default tightened (Flask)                                      |
+| TD-018 | ⬜     | 🟡  | Frontend    | Table renders all rows                                              |
+| TD-019 | ⬜     | 🟢  | Infra       | No Docker                                                           |
+| TD-020 | ✅     | 🟢  | Repo        | .gitIgnore → .gitignore                                             |
+| TD-021 | ✅     | 🟠  | Backend     | Multi-page PDF rows dropped                                         |
+| TD-022 | ✅     | 🟠  | Backend     | Dead Pennyless fn deleted (Flask)                                   |
+| TD-023 | ⬜     | 🟡  | Backend     | Validation trusts extension not bytes                               |
+| TD-024 | ✅     | 🟡  | Backend     | No transaction deduplication — SHA-256 dedup via BSA-19             |
+| TD-025 | ⬜     | 🟡  | Backend     | txn_reference regex over-greedy                                     |
+| TD-026 | ⬜     | 🟡  | Backend     | Confidence penalizes balance-less formats                           |
+| TD-027 | ✅     | 🟡  | Backend     | /api/health added to Flask                                          |
+| TD-028 | ✅     | 🔴  | FastAPI     | reload=True hardcoded in run.py                                     |
+| TD-029 | ✅     | 🔴  | FastAPI     | Dead `import requests` + dep in requirements                        |
+| TD-030 | ✅     | 🟠  | FastAPI     | CORS wildcards with allow_credentials=True                          |
+| TD-031 | ✅     | 🟠  | FastAPI     | FastAPI integration tests added (BSA-10)                            |
+| TD-032 | ✅     | 🟡  | FastAPI     | UPLOAD_DIR is cwd-relative, not file-relative                       |
+| TD-033 | ✅     | 🔴  | FastAPI/LLM | Enricher double-indexes results onto wrong txn — fixed Sprint-03    |
+| TD-034 | ✅     | 🟠  | FastAPI/LLM | Enrichment runs after aggregates computed — fixed Sprint-03         |
+| TD-035 | ✅     | 🟠  | FastAPI/LLM | Enrichment bounded — Semaphore + wait_for + cap — fixed Sprint-03   |
+| TD-036 | ✅     | 🟠  | FastAPI     | Summary endpoint accepts untyped list[dict] — fixed Sprint-03       |
+| TD-037 | ✅     | 🟠  | Frontend    | Stale localhost:5000 strings after cutover — fixed Sprint-03        |
+| TD-038 | ✅     | 🟡  | Frontend    | Category column + AI badge on LLM-enriched rows — done Sprint-04    |
 | TD-039 | ✅     | 🟡  | FastAPI     | `insights` added to AnalysisResult Pydantic schema — done Sprint-04 |
-| TD-040 | ✅     | 🟢  | FastAPI     | `currency: str = "INR"` added to SummaryResponse — done Sprint-04 |
-| TD-041 | ✅     | 🟢  | Repo        | backend-v2 → backend rename complete + CLAUDE.md cleaned Sprint-04 |
+| TD-040 | ✅     | 🟢  | FastAPI     | `currency: str = "INR"` added to SummaryResponse — done Sprint-04   |
+| TD-041 | ✅     | 🟢  | Repo        | backend-v2 → backend rename complete + CLAUDE.md cleaned Sprint-04  |
 
 ---
 

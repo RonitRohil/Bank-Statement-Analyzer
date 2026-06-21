@@ -5,6 +5,44 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-21 — BSA-19: SQLite persistence layer (Sprint-04)
+
+**Type:** New feature  
+**Ticket:** BSA-19  
+**Items closed:** BSA-19, TD-024
+
+**What was built:**
+
+- `backend/app/db/models.py` — three SQLModel table models: `StatementDB`, `TransactionDB`, `CorrectionDB` (exact schema from ADR-002).
+- `backend/app/db/database.py` — SQLAlchemy engine + `get_session` FastAPI dependency + `create_db_and_tables` startup helper.
+- `backend/app/db/crud.py` — `hash_file`, `find_statement_by_hash`, `save_statement` — all persistence logic isolated here.
+- `backend/app/routers/statements.py` — `GET /api/statements` returns all stored statements ordered by upload time.
+- `backend/app/routers/analyze.py` — added optional `?persist=true` query parameter; dedup check runs before parsing; `save_statement` called after successful analysis.
+- `backend/app/config/settings.py` — `database_url` setting added.
+- `backend/app/main.py` — `create_db_and_tables()` called in lifespan; statements router registered.
+- `backend/alembic/` — Alembic initialized; first migration `9670b8f28c89` creates all three tables.
+- `backend/tests/test_persistence.py` — 6 tests covering unit (save, find, dedup) and HTTP (persist=true, cached response).
+- `backend/.env.example` — `DATABASE_URL=sqlite:///./statements.db` added.
+
+**Encryption decision:** No encryption at rest for this sprint. The `.db` file contains real financial data. Users are responsible for OS-level disk encryption. Must be revisited before any networked or multi-user deployment (documented in ADR-002 footnote).
+
+**Files affected:**
+
+- `backend/requirements.txt` — sqlmodel==0.0.21, alembic==1.13.1 added
+- `backend/app/db/` (new package)
+- `backend/app/routers/statements.py` (new)
+- `backend/app/routers/analyze.py` — persist param
+- `backend/app/config/settings.py` — database_url
+- `backend/app/main.py` — DB startup + statements router
+- `backend/alembic/` (new)
+- `backend/tests/test_persistence.py` (new)
+- `backend/.env.example` (new)
+- `CLAUDE.md` — deployment notes, env vars, known issues
+- `docs/tech-debt.md` — TD-024 marked ✅, status snapshot updated
+- `docs/adr-002-persistence.md` — encryption footnote
+
+---
+
 ## 2026-06-21 — Sprint-04 housekeeping: schema fixes, AI badge, backend rename (TD-038/039/040/041)
 
 **Type:** Bug fix / cleanup (first commit of Sprint-04)  
@@ -22,7 +60,8 @@ Directory rename was already done on disk by the user. Cleaned up remaining stal
 **TD-038 — AI badge on LLM-enriched rows (partial → full):**  
 Added a "Category" column to `TransactionTable.tsx`. When `txn.llm_enriched === true`, an indigo "AI" pill with `title="AI-categorized"` renders inline with the category names. Rows with no category show a `—` placeholder. The AI badge that was previously misplaced in the Method column (missing `title` attribute, wrong color) was removed to avoid duplication.
 
-**Files affected:**  
+**Files affected:**
+
 - `frontend/components/TransactionTable.tsx` — new Category column, AI badge
 - `CLAUDE.md` — backend-v2 references cleaned
 - `docs/tech-debt.md` — TD-038/039/040/041 marked ✅; action plan updated; TD-019 path corrected

@@ -3,9 +3,13 @@ import logging
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import JSONResponse
+from sqlmodel import Session
 
 from app.config.settings import settings
+from app.db.crud import find_statement_by_hash, hash_file, save_statement
+from app.db.database import get_session
 from app.models.analyzer import BankStatementAnalyzer, TransactionPatternTrainer
 from app.models.schemas import AnalyzeResponse
 from app.services.insights import generate_insights
@@ -22,7 +26,11 @@ MAX_BYTES = settings.max_upload_size_mb * 1024 * 1024
 
 
 @router.post("/api/analyze/bank/statement", response_model=AnalyzeResponse)
-async def analyze_statement(file: UploadFile = File(...)):
+async def analyze_statement(
+    file: UploadFile = File(...),
+    persist: bool = False,
+    session: Session = Depends(get_session),
+):
     suffix = Path(file.filename).suffix.lower()
     if suffix not in ALLOWED_EXTENSIONS:
         raise HTTPException(
@@ -36,6 +44,18 @@ async def analyze_statement(file: UploadFile = File(...)):
             status_code=413,
             detail=f"File exceeds {settings.max_upload_size_mb} MB limit.",
         )
+
+    if persist:
+        file_hash = hash_file(content)
+        existing = find_statement_by_hash(session, file_hash)
+        if existing:
+            return JSONResponse(
+                content={
+                    "cached": True,
+                    "statement_id": existing.id,
+                    "message": "Statement already analyzed",
+                }
+            )
 
     unique_name = f"{uuid.uuid4().hex}{suffix}"
     file_path = UPLOAD_DIR / unique_name
@@ -60,6 +80,9 @@ async def analyze_statement(file: UploadFile = File(...)):
             result["result"]["insights"] = generate_insights(
                 enriched, result["result"]["merchant_insights"]
             )
+
+        if persist:
+            save_statement(session, file_hash, file.filename, result)
 
         return result
     except HTTPException:

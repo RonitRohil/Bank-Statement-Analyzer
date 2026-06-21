@@ -6,13 +6,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config.settings import settings
-from app.routers import health, analyze, summary
+from app.db.database import create_db_and_tables
+from app.routers import health, analyze, statements, summary
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    create_db_and_tables()
+    logger.info("Database tables ready")
     logger.info("Bank Statement Analyzer v2 started on port 8000")
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
@@ -24,6 +27,7 @@ async def lifespan(app: FastAPI):
             settings.ollama_base_url,
         )
     yield
+    logger.info("Shutting down")
 
 
 app = FastAPI(
@@ -43,4 +47,5 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(analyze.router)
+app.include_router(statements.router)
 app.include_router(summary.router)
