@@ -6,6 +6,11 @@ from sqlmodel import Session, select
 
 from app.db.models import StatementDB, TransactionDB
 
+# --- CorrectionDB fingerprint spec (for BSA-16 learning loop) ---
+# fingerprint = SHA-256 of f"{transaction_date}:{amount}:{narration[:100]}"
+# This must match the key used in save_correction() when BSA-16 is implemented.
+# See: docs/sprint-05-plan.md → BSA-16 in P2 backlog
+
 
 def hash_file(file_bytes: bytes) -> str:
     return hashlib.sha256(file_bytes).hexdigest()

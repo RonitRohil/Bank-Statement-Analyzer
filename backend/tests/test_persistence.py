@@ -143,3 +143,71 @@ async def test_persist_true_second_upload_returns_cached(mem_client):
     data2 = r2.json()
     assert data2.get("cached") is True
     assert "statement_id" in data2
+
+
+async def test_get_statement_transactions_returns_list(mem_client):
+    csv_path = FIXTURES_DIR / "sample.csv"
+    async with AsyncClient(
+        transport=ASGITransport(app=mem_client), base_url="http://test"
+    ) as client:
+        r_upload = await client.post(
+            "/api/analyze/bank/statement?persist=true",
+            files={"file": ("sample.csv", csv_path.read_bytes(), "text/csv")},
+        )
+        assert r_upload.status_code == 200
+
+        # Resolve the statement_id from the listing — analyze does not echo it on first upload
+        r_list = await client.get("/api/statements?limit=1&offset=0")
+        assert r_list.status_code == 200
+        statement_id = r_list.json()["statements"][0]["id"]
+
+        r_txns = await client.get(f"/api/statements/{statement_id}/transactions")
+    assert r_txns.status_code == 200
+    data = r_txns.json()
+    assert "transactions" in data
+    assert isinstance(data["transactions"], list)
+    assert len(data["transactions"]) > 0
+
+
+async def test_get_statement_transactions_404(mem_client):
+    async with AsyncClient(
+        transport=ASGITransport(app=mem_client), base_url="http://test"
+    ) as client:
+        r = await client.get("/api/statements/999/transactions")
+    assert r.status_code == 404
+
+
+async def test_list_statements_pagination(mem_client):
+    csv_path = FIXTURES_DIR / "sample.csv"
+    file_content = csv_path.read_bytes()
+
+    # Use two distinct filenames to bypass the SHA-256 dedup guard
+    import hashlib
+
+    content_a = file_content + b"\n# statement-a"
+    content_b = file_content + b"\n# statement-b"
+
+    async with AsyncClient(
+        transport=ASGITransport(app=mem_client), base_url="http://test"
+    ) as client:
+        await client.post(
+            "/api/analyze/bank/statement?persist=true",
+            files={"file": ("a.csv", content_a, "text/csv")},
+        )
+        await client.post(
+            "/api/analyze/bank/statement?persist=true",
+            files={"file": ("b.csv", content_b, "text/csv")},
+        )
+
+        r1 = await client.get("/api/statements?limit=1&offset=0")
+        assert r1.status_code == 200
+        d1 = r1.json()
+        assert len(d1["statements"]) == 1
+
+        r2 = await client.get("/api/statements?limit=1&offset=1")
+        assert r2.status_code == 200
+        d2 = r2.json()
+        assert len(d2["statements"]) == 1
+
+        # The two pages must be different records
+        assert d1["statements"][0]["id"] != d2["statements"][0]["id"]
