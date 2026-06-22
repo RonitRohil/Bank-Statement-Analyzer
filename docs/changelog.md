@@ -5,6 +5,22 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-22 — Sprint-06 housekeeping: CR-S5-01, CR-S5-04, CR-S5-05
+
+**Type:** Cleanup (first commit of Sprint-06)
+**Items closed:** CR-S5-05, CR-S5-01, CR-S5-04
+
+- **CR-S5-05:** Added `.limit(5000)` to inner transaction query in `get_monthly_summary()` — prevents unbounded memory load as statement archive grows.
+- **CR-S5-01:** Added route ordering comment above `/{statement_id}` in `statements.py` — warns future developers not to add named routes below the parametric route.
+- **CR-S5-04:** Added staleness comment on `recurring_candidates_json` assignment in `save_statement()` — documents the frozen-at-upload-time design intent.
+
+**Files affected:**
+
+- `backend/app/db/crud.py`
+- `backend/app/routers/statements.py`
+
+---
+
 ## 2026-06-22 — Sprint-05 close-out: study doc, code review, tech-debt update, Sprint-06 plan
 
 **Type:** Documentation / review (Cowork session — no code changes)

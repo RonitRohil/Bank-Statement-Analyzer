@@ -61,6 +61,8 @@ def get_recurring_subscriptions(
     )
 
 
+# NOTE: Named routes (/compare, /recurring) MUST appear above this parametric route.
+# FastAPI matches first-wins — "compare" would be cast to int and return 422 if below.
 @router.get("/api/statements/{statement_id}/transactions")
 def get_statement_transactions(
     statement_id: int,

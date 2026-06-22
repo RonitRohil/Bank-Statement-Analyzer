@@ -43,6 +43,8 @@ def save_statement(
         period_from=period.get("from"),
         period_to=period.get("to"),
         confidence_overall=summary.get("overall_score"),
+        # Frozen at upload time. Re-upload the statement to refresh recurring detection.
+        # This is intentional: stores the detection result as it was at upload, independent of future threshold changes.
         recurring_candidates_json=json.dumps(recurring_candidates or []),
     )
     session.add(stmt)
@@ -86,7 +88,9 @@ def get_monthly_summary(account_number: str, session: Session) -> list[dict]:
 
     for stmt in statements:
         txns = session.exec(
-            select(TransactionDB).where(TransactionDB.statement_id == stmt.id)
+            select(TransactionDB)
+            .where(TransactionDB.statement_id == stmt.id)
+            .limit(5000)  # cap: prevents memory spike on very large statements
         ).all()
 
         for txn in txns:
