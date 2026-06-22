@@ -5,6 +5,28 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-22 — Sprint-06: TD-018 — TransactionTable Client-Side Pagination
+
+**Type:** Enhancement
+**Task:** TD-018
+
+Adds client-side pagination to `TransactionTable` so large statement uploads (1,000+ rows) don't block the browser rendering all rows at once.
+
+**What was built:**
+
+- `PAGE_SIZE = 50` constant — each page shows 50 transactions.
+- `currentPage` state resets to 1 whenever the `transactions` prop changes (switching statements, re-upload).
+- `pageTransactions` slice computed from `safeTransactions`; the tbody maps over that slice.
+- Global row index (`(currentPage - 1) * PAGE_SIZE + localIndex`) used for `rowStates` keying so category corrections survive page navigation.
+- Pager UI (inside `overflow-x-auto` div, below `</table>`) shows only when `totalPages > 1`: "Showing X–Y of N", Prev/Next buttons with disabled states, current page indicator.
+- Export buttons (`↓ CSV`, `↓ Excel`) still pass `safeTransactions` (all rows), not the page slice.
+- No new npm dependencies.
+
+**Files affected:**
+- `frontend/components/TransactionTable.tsx`
+
+---
+
 ## 2026-06-22 — Sprint-06: BSA-16 — Category-Correction Learning Loop
 
 **Type:** Feature

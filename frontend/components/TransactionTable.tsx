@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Transaction } from "../types";
 import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { exportTransactions, submitCorrection } from "../services/api";
@@ -22,6 +22,8 @@ const CANONICAL_CATEGORIES = [
   "Other",
 ];
 
+const PAGE_SIZE = 50;
+
 interface TransactionTableProps {
   transactions: Transaction[];
 }
@@ -39,9 +41,19 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
   const safeTransactions = transactions || [];
   const [exporting, setExporting] = useState(false);
   const [rowStates, setRowStates] = useState<Record<number, RowState>>({});
+  const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [transactions]);
 
   const getRowState = (index: number): RowState =>
-    rowStates[index] ?? { open: false, saving: false, corrected: null, error: null };
+    rowStates[index] ?? {
+      open: false,
+      saving: false,
+      corrected: null,
+      error: null,
+    };
 
   const patchRow = (index: number, patch: Partial<RowState>) =>
     setRowStates((prev) => ({
@@ -78,6 +90,12 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
       patchRow(index, { saving: false, error: "Failed to save — try again" });
     }
   };
+
+  const totalPages = Math.ceil(safeTransactions.length / PAGE_SIZE);
+  const pageTransactions = safeTransactions.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
@@ -120,7 +138,8 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-sm">
-            {safeTransactions.map((txn, index) => {
+            {pageTransactions.map((txn, localIndex) => {
+              const index = (currentPage - 1) * PAGE_SIZE + localIndex;
               const rs = getRowState(index);
               const displayCategory = rs.corrected
                 ? rs.corrected
@@ -177,7 +196,9 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                         )}
                         {!rs.corrected && (
                           <button
-                            onClick={() => patchRow(index, { open: !rs.open, error: null })}
+                            onClick={() =>
+                              patchRow(index, { open: !rs.open, error: null })
+                            }
                             className="text-xs text-slate-400 hover:text-indigo-600 underline-offset-2 hover:underline ml-1"
                           >
                             ✏ Fix
@@ -191,7 +212,11 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                             disabled={rs.saving}
                             onChange={(e) => {
                               if (e.target.value)
-                                handleCategorySelect(index, txn, e.target.value);
+                                handleCategorySelect(
+                                  index,
+                                  txn,
+                                  e.target.value,
+                                );
                             }}
                             className="text-xs border border-slate-300 rounded px-1.5 py-1 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:opacity-50"
                           >
@@ -207,7 +232,9 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                         </div>
                       )}
                       {rs.error && (
-                        <span className="text-xs text-rose-600">{rs.error}</span>
+                        <span className="text-xs text-rose-600">
+                          {rs.error}
+                        </span>
                       )}
                     </div>
                   </td>
@@ -246,6 +273,36 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
             })}
           </tbody>
         </table>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-3 mb-2 px-4 text-sm text-slate-500">
+            <span>
+              Showing {(currentPage - 1) * PAGE_SIZE + 1}–
+              {Math.min(currentPage * PAGE_SIZE, safeTransactions.length)} of{" "}
+              {safeTransactions.length}
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50"
+              >
+                ← Prev
+              </button>
+              <span className="px-3 py-1">
+                {currentPage} / {totalPages}
+              </span>
+              <button
+                onClick={() =>
+                  setCurrentPage((p) => Math.min(totalPages, p + 1))
+                }
+                disabled={currentPage === totalPages}
+                className="px-3 py-1 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50"
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {safeTransactions.length === 0 && (
