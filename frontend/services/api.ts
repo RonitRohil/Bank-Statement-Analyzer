@@ -2,6 +2,7 @@ import {
   ApiResponse,
   ComparisonResponse,
   StoredStatement,
+  StoredTransactionRaw,
   SummaryResponse,
   Transaction,
 } from "../types";
@@ -108,9 +109,7 @@ export async function compareStatements(
   return res.json();
 }
 
-export async function getConfirmedRecurring(
-  accountNumber: string,
-): Promise<{
+export async function getConfirmedRecurring(accountNumber: string): Promise<{
   confirmed_recurring: {
     merchant: string;
     statement_count: number;
@@ -153,7 +152,7 @@ export async function getStatementTransactions(id: number) {
   if (!res.ok) throw new Error(`Failed to load transactions: ${res.status}`);
   return res.json() as Promise<{
     statement_id: number;
-    transactions: Transaction[];
+    transactions: StoredTransactionRaw[];
   }>;
 }
 

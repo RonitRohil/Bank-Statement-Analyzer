@@ -39,9 +39,12 @@ export default function QAChat({ accountNumber }: Props) {
 
   return (
     <div className="bg-white rounded-xl shadow p-6 mt-6">
-      <h2 className="text-lg font-semibold mb-1">Ask About Your Transactions</h2>
+      <h2 className="text-lg font-semibold mb-1">
+        Ask About Your Transactions
+      </h2>
       <p className="text-sm text-gray-500 mb-4">
-        Ask a question in plain English and get an answer based on your stored data.
+        Ask a question in plain English and get an answer based on your stored
+        data.
       </p>
 
       <form onSubmit={handleSubmit} className="flex gap-2">
@@ -82,7 +85,8 @@ export default function QAChat({ accountNumber }: Props) {
           </div>
           {result.data_points > 0 && (
             <p className="text-xs text-gray-400 mt-1 ml-1">
-              Based on {result.data_points} transaction{result.data_points !== 1 ? "s" : ""}
+              Based on {result.data_points} transaction
+              {result.data_points !== 1 ? "s" : ""}
             </p>
           )}
         </div>

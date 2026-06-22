@@ -70,10 +70,7 @@ const MonthlyComparison: React.FC<Props> = ({ months, accountNumber }) => {
 
       <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
         {months.slice(-4).map((m) => (
-          <div
-            key={m.month}
-            className="rounded-lg bg-gray-50 p-3 text-center"
-          >
+          <div key={m.month} className="rounded-lg bg-gray-50 p-3 text-center">
             <div className="text-xs text-gray-500">{m.month}</div>
             <div className="font-semibold text-sm">
               ₹{m.expenses.toLocaleString("en-IN")}
