@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { AnalysisResult, ApiResponse, ComparisonResponse } from "./types";
-import { uploadBankStatement, compareStatements, API_BASE } from "./services/api";
+import { uploadBankStatement, compareStatements, getConfirmedRecurring, API_BASE } from "./services/api";
 import { FileUpload } from "./components/FileUpload";
 import { AccountOverview } from "./components/AccountOverview";
 import { TransactionTable } from "./components/TransactionTable";
@@ -10,6 +10,7 @@ import { SpendingSummary } from "./components/SpendingSummary";
 import { InsightsStrip } from "./components/InsightsStrip";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import MonthlyComparison from "./components/MonthlyComparison";
+import SubscriptionsCard from "./components/SubscriptionsCard";
 import { LayoutDashboard, RefreshCw } from "lucide-react";
 
 const App: React.FC = () => {
@@ -18,6 +19,7 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [persist, setPersist] = useState<boolean>(false);
   const [comparisonData, setComparisonData] = useState<ComparisonResponse | null>(null);
+  const [confirmedRecurring, setConfirmedRecurring] = useState<{ merchant: string; statement_count: number; avg_amount: number; last_seen: string | null }[]>([]);
 
   useEffect(() => {
     if (!data || !persist) return;
@@ -25,6 +27,9 @@ const App: React.FC = () => {
     if (!accountNumber) return;
     compareStatements(accountNumber)
       .then(setComparisonData)
+      .catch(() => {});
+    getConfirmedRecurring(accountNumber)
+      .then((r) => setConfirmedRecurring(r.confirmed_recurring))
       .catch(() => {});
   }, [data, persist]);
 
@@ -66,6 +71,7 @@ const App: React.FC = () => {
     setData(null);
     setError(null);
     setComparisonData(null);
+    setConfirmedRecurring([]);
   };
 
   return (
@@ -173,6 +179,12 @@ const App: React.FC = () => {
                   months={comparisonData.months}
                   accountNumber={comparisonData.account_number}
                 />
+              </ErrorBoundary>
+            )}
+
+            {confirmedRecurring.length > 0 && (
+              <ErrorBoundary>
+                <SubscriptionsCard subscriptions={confirmedRecurring} />
               </ErrorBoundary>
             )}
 

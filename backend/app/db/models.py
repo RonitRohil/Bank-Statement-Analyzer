@@ -15,6 +15,7 @@ class StatementDB(SQLModel, table=True):
     period_to: Optional[str] = None  # ISO date
     uploaded_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     confidence_overall: Optional[float] = None
+    recurring_candidates_json: Optional[str] = None  # JSON list from detect_recurring()
 
 
 class TransactionDB(SQLModel, table=True):

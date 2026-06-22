@@ -24,7 +24,11 @@ def find_statement_by_hash(session: Session, file_hash: str) -> Optional[Stateme
 
 
 def save_statement(
-    session: Session, file_hash: str, filename: str, result: dict
+    session: Session,
+    file_hash: str,
+    filename: str,
+    result: dict,
+    recurring_candidates: list | None = None,
 ) -> StatementDB:
     account_info = result.get("result", {}).get("account_info", {})
     period = account_info.get("statement_period") or {}
@@ -39,6 +43,7 @@ def save_statement(
         period_from=period.get("from"),
         period_to=period.get("to"),
         confidence_overall=summary.get("overall_score"),
+        recurring_candidates_json=json.dumps(recurring_candidates or []),
     )
     session.add(stmt)
     session.flush()  # populate stmt.id without committing
@@ -135,3 +140,40 @@ def get_monthly_summary(account_number: str, session: Session) -> list[dict]:
         })
 
     return result
+
+
+def get_cross_statement_recurring(account_number: str, session: Session) -> list[dict]:
+    """
+    Returns merchants that appear as recurring_candidates in ≥2 of the last 3
+    stored statements for the given account number.
+    """
+    stmts = session.exec(
+        select(StatementDB)
+        .where(StatementDB.account_number == account_number)
+        .order_by(StatementDB.uploaded_at.desc())
+        .limit(3)
+    ).all()
+
+    if len(stmts) < 2:
+        return []
+
+    merchant_appearances: dict[str, list[dict]] = {}
+    for stmt in stmts:
+        candidates = json.loads(stmt.recurring_candidates_json or "[]")
+        for c in candidates:
+            m = c.get("merchant")
+            if m:
+                merchant_appearances.setdefault(m, []).append(c)
+
+    confirmed = []
+    for merchant, appearances in merchant_appearances.items():
+        if len(appearances) >= 2:
+            avg_amount = sum(a.get("avg_amount", 0) for a in appearances) / len(appearances)
+            confirmed.append({
+                "merchant": merchant,
+                "statement_count": len(appearances),
+                "avg_amount": round(avg_amount, 2),
+                "last_seen": appearances[0].get("last_seen"),
+            })
+
+    return sorted(confirmed, key=lambda x: x["statement_count"], reverse=True)

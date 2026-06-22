@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
 
-from app.db.crud import get_monthly_summary
+from app.db.crud import get_cross_statement_recurring, get_monthly_summary
 from app.db.database import get_session
 from app.db.models import StatementDB, TransactionDB
-from app.models.schemas import ComparisonResponse, MonthSummary
+from app.models.schemas import ComparisonResponse, MonthSummary, RecurringResponse
 
 router = APIRouter()
 
@@ -44,6 +44,20 @@ def compare_statements(
         account_number=account_number,
         months=months,
         total_months=len(months),
+    )
+
+
+@router.get("/api/statements/recurring", response_model=RecurringResponse)
+def get_recurring_subscriptions(
+    account_number: str = Query(..., description="Account number to check for recurring charges"),
+    session: Session = Depends(get_session),
+):
+    """Returns merchants confirmed as recurring across multiple stored statements."""
+    confirmed = get_cross_statement_recurring(account_number, session)
+    return RecurringResponse(
+        account_number=account_number,
+        confirmed_recurring=confirmed,
+        requires_statements=2,
     )
 
 

@@ -114,6 +114,19 @@ class ComparisonResponse(BaseModel):
     total_months: int
 
 
+class ConfirmedRecurringItem(BaseModel):
+    merchant: str
+    statement_count: int
+    avg_amount: float
+    last_seen: Optional[str] = None
+
+
+class RecurringResponse(BaseModel):
+    account_number: str
+    confirmed_recurring: List[ConfirmedRecurringItem]
+    requires_statements: int = 2
+
+
 class SummaryResponse(BaseModel):
     total_income: float
     total_expenses: float

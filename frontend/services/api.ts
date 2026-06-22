@@ -97,6 +97,14 @@ export async function compareStatements(accountNumber: string): Promise<Comparis
   return res.json();
 }
 
+export async function getConfirmedRecurring(accountNumber: string): Promise<{ confirmed_recurring: { merchant: string; statement_count: number; avg_amount: number; last_seen: string | null }[] }> {
+  const res = await fetch(
+    `${API_BASE}/api/statements/recurring?account_number=${encodeURIComponent(accountNumber)}`
+  );
+  if (!res.ok) return { confirmed_recurring: [] };
+  return res.json();
+}
+
 export const getSummary = async (
   transactions: Transaction[],
 ): Promise<SummaryResponse> => {
