@@ -4,6 +4,8 @@ import {
   ApiResponse,
   ComparisonResponse,
   StoredStatement,
+  StoredTransactionRaw,
+  Transaction,
 } from "./types";
 import {
   uploadBankStatement,
@@ -65,7 +67,7 @@ const App: React.FC = () => {
     const statement = storedStatements.find((s) => s.id === id);
     getStatementTransactions(id)
       .then((res) => {
-        const txns = res.transactions.map((t: any) => ({
+        const txns = res.transactions.map((t: StoredTransactionRaw) => ({
           ...t,
           category:
             typeof t.category === "string"
@@ -77,16 +79,18 @@ const App: React.FC = () => {
                   }
                 })()
               : (t.category ?? []),
-          receiver_details: t.receiver_details ?? {
-            account: null,
-            name: null,
-            vpa: null,
-          },
-          remarks: t.remarks ?? [],
-          bank_peer: t.bank_peer ?? null,
-          upi_id: t.upi_id ?? null,
-          account: t.account ?? null,
-        }));
+          receiver_details: { account: null, name: null, vpa: null },
+          remarks: [],
+          bank_peer: null,
+          upi_id: null,
+          account: null,
+          narration: t.narration ?? "",
+          transaction_date: t.transaction_date ?? "",
+          transaction_type: (t.transaction_type ?? "DEBIT") as
+            | "CREDIT"
+            | "DEBIT",
+          confidence_score: t.confidence_score ?? 0,
+        })) as Transaction[];
         setData({
           account_info: {
             account_holder: statement?.account_holder ?? null,
@@ -106,7 +110,7 @@ const App: React.FC = () => {
             overall_score: statement?.confidence_overall ?? 0,
             total_transactions: txns.length,
             high_confidence_txns: txns.filter(
-              (t: any) => (t.confidence_score ?? 0) >= 0.8,
+              (t) => (t.confidence_score ?? 0) >= 0.8,
             ).length,
           },
           merchant_insights: {},

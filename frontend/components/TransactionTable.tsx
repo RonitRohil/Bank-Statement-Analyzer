@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Transaction } from "../types";
 import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { exportTransactions, submitCorrection } from "../services/api";
@@ -42,10 +42,12 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
   const [exporting, setExporting] = useState(false);
   const [rowStates, setRowStates] = useState<Record<number, RowState>>({});
   const [currentPage, setCurrentPage] = useState(1);
+  const [prevTransactions, setPrevTransactions] = useState(transactions);
 
-  useEffect(() => {
+  if (prevTransactions !== transactions) {
+    setPrevTransactions(transactions);
     setCurrentPage(1);
-  }, [transactions]);
+  }
 
   const getRowState = (index: number): RowState =>
     rowStates[index] ?? {

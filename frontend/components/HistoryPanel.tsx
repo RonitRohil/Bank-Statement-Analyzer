@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Trash2, Loader2, Clock, ChevronDown } from "lucide-react";
 import { StoredStatement } from "../types";
 
@@ -20,12 +20,6 @@ export default function HistoryPanel({
   const [loadingRowId, setLoadingRowId] = useState<number | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-
-  useEffect(() => {
-    if (!loading && loadingRowId !== null) {
-      setLoadingRowId(null);
-    }
-  }, [loading]);
 
   const handleLoad = (id: number) => {
     setLoadingRowId(id);
@@ -112,10 +106,10 @@ export default function HistoryPanel({
                   <div className="flex items-center gap-2 shrink-0">
                     <button
                       onClick={() => handleLoad(s.id)}
-                      disabled={loadingRowId !== null || loading}
+                      disabled={loading}
                       className="flex items-center gap-1.5 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg transition-colors"
                     >
-                      {loadingRowId === s.id && (
+                      {loading && loadingRowId === s.id && (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       )}
                       Load
