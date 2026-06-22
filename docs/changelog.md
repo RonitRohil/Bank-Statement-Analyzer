@@ -5,6 +5,34 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-22 — Sprint-06: BSA-16 — Category-Correction Learning Loop
+
+**Type:** Feature
+**Task:** BSA-16
+
+Wires up the `CorrectionDB` table (created in Sprint-04) with a POST endpoint to store user corrections, a correction-override pass in the analyze pipeline, and a "Fix" button in the transaction table.
+
+**What was built:**
+
+- `backend/app/db/crud.py` — `fingerprint_transaction()` (SHA-256 of `date:amount:narration[:100]`, normalized), `save_correction()` (upsert by fingerprint), `get_correction()` (lookup). Replaced the placeholder fingerprint comment with the live implementation. `CorrectionDB` now imported at module level.
+- `backend/app/routers/corrections.py` (new) — `POST /api/corrections` (201). Validates category against `CANONICAL_CATEGORIES`, computes fingerprint, upserts correction. Returns fingerprint + corrected category.
+- `backend/app/main.py` — `corrections.router` registered.
+- `backend/app/routers/analyze.py` — Correction-override pass added inside the `persist=True` branch, after `enrich_with_llm()` and before `save_statement()`. Applies stored category/merchant overrides per transaction fingerprint. Stateless (no-persist) path is unchanged.
+- `frontend/services/api.ts` — `submitCorrection()` added: `POST /api/corrections`.
+- `frontend/components/TransactionTable.tsx` — "✏ Fix" link-button per row in the Category column. On click: inline dropdown with all 16 canonical categories. On select: calls `submitCorrection()`; on success shows "📌 Corrected" badge and updates displayed category; on error shows red inline error.
+- `backend/tests/test_corrections.py` (new) — 6 tests: 201 on valid correction, upsert (second category wins), 422 on unknown category, `get_correction` returns None for unknown fingerprint, fingerprint determinism, session-level upsert.
+
+**Files affected:**
+- `backend/app/db/crud.py`
+- `backend/app/routers/corrections.py` (new)
+- `backend/app/main.py`
+- `backend/app/routers/analyze.py`
+- `frontend/services/api.ts`
+- `frontend/components/TransactionTable.tsx`
+- `backend/tests/test_corrections.py` (new)
+
+---
+
 ## 2026-06-22 — Sprint-06: BSA-20 — Statement History UI + DELETE endpoint
 
 **Type:** Feature

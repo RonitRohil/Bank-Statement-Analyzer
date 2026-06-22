@@ -164,6 +164,28 @@ export async function listStatements(limit = 50): Promise<StoredStatement[]> {
   return data.statements ?? [];
 }
 
+export async function submitCorrection(
+  transactionDate: string,
+  amount: number,
+  narration: string,
+  correctedCategory: string,
+  correctedMerchant?: string,
+) {
+  const res = await fetch(`${API_BASE}/api/corrections`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      transaction_date: transactionDate,
+      amount,
+      narration,
+      corrected_category: correctedCategory,
+      corrected_merchant: correctedMerchant ?? null,
+    }),
+  });
+  if (!res.ok) throw new Error(`Correction failed: ${res.status}`);
+  return res.json();
+}
+
 export const getSummary = async (
   transactions: Transaction[],
 ): Promise<SummaryResponse> => {

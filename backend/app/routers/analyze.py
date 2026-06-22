@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from sqlmodel import Session
 
 from app.config.settings import settings
-from app.db.crud import find_statement_by_hash, hash_file, save_statement
+from app.db.crud import find_statement_by_hash, fingerprint_transaction, get_correction, hash_file, save_statement
 from app.db.database import get_session
 from app.models.analyzer import BankStatementAnalyzer, TransactionPatternTrainer
 from app.models.schemas import AnalyzeResponse
@@ -85,6 +85,23 @@ async def analyze_statement(
             )
 
         if persist:
+            # Apply stored category corrections before saving and returning.
+            for txn in result.get("result", {}).get("transactions", []):
+                fp = fingerprint_transaction(
+                    txn.get("transaction_date", ""),
+                    txn.get("amount", 0.0),
+                    txn.get("narration", ""),
+                )
+                correction = get_correction(session, fp)
+                if correction:
+                    txn["category"] = [correction.corrected_category]
+                    if correction.corrected_merchant:
+                        txn["merchant"] = correction.corrected_merchant
+                    logger.warning(
+                        "Correction override applied: fp=%s cat=%s",
+                        fp[:8],
+                        correction.corrected_category,
+                    )
             save_statement(
                 session,
                 file_hash,
