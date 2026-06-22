@@ -5,6 +5,89 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-22 — Sprint-05 close-out: study doc, code review, tech-debt update, Sprint-06 plan
+
+**Type:** Documentation / review (Cowork session — no code changes)
+**What was reviewed:** BSA-17 (MoM comparison), BSA-07-full (cross-statement recurring), TD-007/008 (analyzer split), CR-S4 housekeeping block.
+**New debt items logged from review (CR-S5-01 through CR-S5-07):**
+
+- **CR-S5-05 (🟠):** `get_monthly_summary()` loads all transactions without a cap — add `.limit(5000)` in Sprint-06 housekeeping.
+- **CR-S5-01 (🟡):** Named route ordering in `statements.py` is fragile — add comment above `/{statement_id}`.
+- **CR-S5-04 (🟢):** `recurring_candidates_json` staleness not documented — add comment to `crud.py`.
+- **CR-S5-02 (🟢):** `top_category` computed in MoM response but not rendered in `MonthlyComparison.tsx`.
+- **CR-S5-03 (🟢):** `pdf_parser.py` imports shared utilities from `excel_parser.py` — extract to `parsers/utils.py` later.
+- **CR-S5-06 (🟢):** MoM YAxis formatter breaks on sub-₹1k amounts.
+- **CR-S5-07 (🟢):** `SubscriptionsCard` monthly total assumes all charges are monthly.
+
+**Also:** `docs/study/sprint-05-learnings.md` written; `docs/code-review.md` updated to Sprint-05 review; `docs/tech-debt.md` updated (TD-007/008 closed ✅, BSA-07-full closed ✅, CR-S4 items closed ✅, CR-S5 items opened); `docs/sprint-06-plan.md` written; `docs/prompts/sprint-06/00–06` written.
+**Files affected (docs only):** `docs/study/sprint-05-learnings.md` (new), `docs/code-review.md`, `docs/tech-debt.md`, `docs/sprint-06-plan.md` (new), `docs/prompts/sprint-06/00–06` (new), `docs/changelog.md`
+
+---
+
+## 2026-06-22 — Sprint-05: BSA-17 (MoM comparison), BSA-07-full (cross-statement recurring), TD-007/008 (analyzer split), CR-S4 housekeeping
+
+**Type:** Features + architectural refactor (Sprint-05)
+
+### CR-S4 Housekeeping block (first commit)
+
+- **CR-S4-01:** `GET /api/statements` now accepts `limit` (default 20, max 100) and `offset` query params. Response envelope mirrors params.
+- **CR-S4-02:** `GET /api/statements/{id}/transactions` endpoint added. Paginated (default 100, max 500). Returns 404 on unknown statement ID.
+- **CR-S4-03:** CorrectionDB fingerprint format documented in `crud.py` comment: `SHA-256 of f"{transaction_date}:{amount}:{narration[:100]}"`.
+- **CR-S4-05:** Export `filename` query param sanitized via `re.sub(r"[^\w\-.]", "_", ...)` before `Content-Disposition` header.
+
+**Files:** `backend/app/routers/statements.py`, `backend/app/routers/export.py`, `backend/app/db/crud.py`
+
+---
+
+### BSA-17 — Month-over-month comparison
+
+- `get_monthly_summary(account_number, session)` in `crud.py` — aggregates all stored statements for an account by `YYYY-MM`, computes per-month income/expense/net/top_category/delta_expenses_pct.
+- `GET /api/statements/compare?account_number=XXXX` — returns `ComparisonResponse` with `months: list[MonthSummary]`. 404 if no statements for that account.
+- `MonthSummary` + `ComparisonResponse` schemas added to `schemas.py`.
+- `frontend/components/MonthlyComparison.tsx` — Recharts `ComposedChart` with income/expense bars + net line. Single-month graceful render + amber warning. Compact tile row for last 4 months. Rendered in `App.tsx` when `persistedMonths.length > 0`.
+- `compareStatements()` added to `frontend/services/api.ts`.
+- 4 tests in `backend/tests/test_comparison.py` (single-month, two-month delta, 404, missing param 422). Uses `StaticPool` for in-memory DB isolation.
+
+**Files:** `backend/app/db/crud.py`, `backend/app/routers/statements.py`, `backend/app/models/schemas.py`, `frontend/components/MonthlyComparison.tsx`, `frontend/services/api.ts`, `frontend/App.tsx`, `backend/tests/test_comparison.py` (new)
+
+---
+
+### BSA-07-full — Cross-statement recurring detection
+
+- Alembic migration `a1b2c3d4e5f6_add_recurring_candidates_json_to_statements.py` — adds `recurring_candidates_json: Optional[str]` column to `StatementDB`. Existing rows default to NULL (treated as `[]`).
+- `save_statement()` in `crud.py` updated to accept `recurring_candidates: list | None` and serialize to JSON.
+- `get_cross_statement_recurring(account_number, session)` in `crud.py` — loads last 3 statements for the account, parses `recurring_candidates_json`, confirms merchants in ≥2 statements. Returns sorted by `statement_count`.
+- `GET /api/statements/recurring?account_number=XXXX` — returns `RecurringResponse` with `confirmed_recurring`. Returns 200 (empty list) even for unknown accounts.
+- `ConfirmedRecurringItem` + `RecurringResponse` schemas added to `schemas.py`.
+- `frontend/components/SubscriptionsCard.tsx` — shows confirmed recurring merchants, avg amount, statement count, estimated monthly total.
+- `getConfirmedRecurring()` added to `frontend/services/api.ts`. Called in `App.tsx` after persist.
+- 4 tests in `backend/tests/test_recurring.py` (detected, single statement, different accounts, endpoint 200 on empty).
+
+**Files:** `backend/alembic/versions/a1b2c3d4e5f6_*.py` (new), `backend/app/db/models.py`, `backend/app/db/crud.py`, `backend/app/routers/statements.py`, `backend/app/models/schemas.py`, `frontend/components/SubscriptionsCard.tsx` (new), `frontend/services/api.ts`, `frontend/App.tsx`, `backend/tests/test_recurring.py` (new)
+
+---
+
+### TD-007/008 — Monolithic analyzer split
+
+`BankStatementAnalyzer` (~1,280 lines) split into four focused modules:
+
+| Module | Lines | Moved from |
+|--------|-------|-----------|
+| `backend/app/parsers/excel_parser.py` | 466 | `_process_excel_csv()`, `parse_amount()`, `normalize_date()`, `find_column()`, `detect_header_row()`, `deduplicate_transactions()`, `clean_column_name()` |
+| `backend/app/parsers/pdf_parser.py` | 286 | `_process_pdf_transactions()`, `looks_like_header()` |
+| `backend/app/enrichers/narration_enricher.py` | 271 | `analyze_narration_details()` |
+| `backend/app/scorers/confidence_scorer.py` | 32 | `calculate_confidence_score()` |
+
+`backend/app/models/analyzer.py` — now 299 lines. Thin orchestrator imports from the modules above. `TransactionPatternTrainer` stays here. External API unchanged: `BankStatementAnalyzer` is still importable from `app.models.analyzer`. All 46 existing tests pass without modification.
+
+**Files:** `backend/app/parsers/excel_parser.py` (new), `backend/app/parsers/pdf_parser.py` (new), `backend/app/enrichers/narration_enricher.py` (new), `backend/app/scorers/confidence_scorer.py` (new), `backend/app/models/analyzer.py` (refactored)
+
+---
+
+**Total tests added this sprint: 8** (4 comparison + 4 recurring). Test count: ~38 → ~46.
+
+---
+
 ## 2026-06-21 — BSA-07 lite: Single-statement recurring detection MVP
 
 **Type:** New feature  

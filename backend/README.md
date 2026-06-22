@@ -34,40 +34,49 @@ DATABASE_URL=sqlite:///./statements.db
 
 ## Layout
 
-| Path | Purpose |
-|------|---------|
-| `run.py` | uvicorn entry point |
-| `app/main.py` | FastAPI app, CORS middleware, router registration, DB lifespan |
-| `app/config/settings.py` | pydantic-settings (CORS, upload size, Ollama, database_url) |
-| `app/db/models.py` | SQLModel table models: `StatementDB`, `TransactionDB`, `CorrectionDB` |
-| `app/db/database.py` | Engine, `get_session` FastAPI dependency, `create_db_and_tables()` |
-| `app/db/crud.py` | `hash_file()`, `find_statement_by_hash()`, `save_statement()` |
-| `app/routers/health.py` | `GET /api/health` |
-| `app/routers/analyze.py` | `POST /api/analyze/bank/statement` — async, `persist=true` flag, LLM enricher |
-| `app/routers/summary.py` | `POST /api/analyze/bank/summary` — pure-math financial summary (BSA-05) |
-| `app/routers/export.py` | `POST /api/export/transactions` — CSV/Excel streaming export (BSA-13) |
-| `app/routers/statements.py` | `GET /api/statements` — list persisted statements (BSA-19) |
-| `app/services/categories.py` | `CANONICAL_CATEGORIES` (16 labels) + `REGEX_TO_CANONICAL` mapping |
-| `app/services/insights.py` | `generate_insights()` — pure stats callouts; `detect_recurring()` — CV-based |
-| `app/services/llm_enricher.py` | `enrich_with_llm()` — Ollama fallback for `category=[]` rows (BSA-04) |
-| `app/models/analyzer.py` | `BankStatementAnalyzer` + `TransactionPatternTrainer` (parsing engine) |
-| `app/models/schemas.py` | Pydantic v2: `Transaction`, `AnalyzeResponse`, `SummaryResponse`, `AnalysisResult` |
-| `alembic/` | Alembic migrations — `versions/9670b8f28c89_initial.py` creates 3 tables |
+| Path                                  | Purpose                                                                                                                                       |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run.py`                              | uvicorn entry point                                                                                                                           |
+| `app/main.py`                         | FastAPI app, CORS middleware, router registration, DB lifespan                                                                                |
+| `app/config/settings.py`              | pydantic-settings (CORS, upload size, Ollama, database_url)                                                                                   |
+| `app/db/models.py`                    | SQLModel table models: `StatementDB`, `TransactionDB`, `CorrectionDB`                                                                         |
+| `app/db/database.py`                  | Engine, `get_session` FastAPI dependency, `create_db_and_tables()`                                                                            |
+| `app/db/crud.py`                      | `hash_file()`, `find_statement_by_hash()`, `save_statement()`, `get_monthly_summary()`, `get_cross_statement_recurring()`                     |
+| `app/routers/health.py`               | `GET /api/health`                                                                                                                             |
+| `app/routers/analyze.py`              | `POST /api/analyze/bank/statement` — async, `persist=true` flag, LLM enricher                                                                 |
+| `app/routers/summary.py`              | `POST /api/analyze/bank/summary` — pure-math financial summary (BSA-05)                                                                       |
+| `app/routers/export.py`               | `POST /api/export/transactions` — CSV/Excel streaming export (BSA-13)                                                                         |
+| `app/routers/statements.py`           | `GET /api/statements`, `/compare`, `/recurring`, `/{id}/transactions` (BSA-19, BSA-17, BSA-07-full)                                           |
+| `app/services/categories.py`          | `CANONICAL_CATEGORIES` (16 labels) + `REGEX_TO_CANONICAL` mapping                                                                             |
+| `app/services/insights.py`            | `generate_insights()` — pure stats callouts; `detect_recurring()` — CV-based                                                                  |
+| `app/services/llm_enricher.py`        | `enrich_with_llm()` — Ollama fallback for `category=[]` rows (BSA-04)                                                                         |
+| `app/models/analyzer.py`              | `BankStatementAnalyzer` + `TransactionPatternTrainer` — thin orchestrator (299 lines); delegates to `parsers/`, `enrichers/`, `scorers/`      |
+| `app/parsers/excel_parser.py`         | `process_excel_csv()`, `parse_amount()`, `normalize_date()`, `find_column()` — split from analyzer.py (Sprint-05)                             |
+| `app/parsers/pdf_parser.py`           | `process_pdf_transactions()`, `looks_like_header()` — split from analyzer.py (Sprint-05)                                                      |
+| `app/enrichers/narration_enricher.py` | `analyze_narration_details()` — regex-based UPI/IMPS/merchant/category extraction                                                             |
+| `app/scorers/confidence_scorer.py`    | `calculate_confidence_score()` — penalty-based 0–1 scorer                                                                                     |
+| `app/models/schemas.py`               | Pydantic v2: `Transaction`, `AnalyzeResponse`, `SummaryResponse`, `AnalysisResult`, `MonthSummary`, `ComparisonResponse`, `RecurringResponse` |
+| `alembic/`                            | Alembic migrations — `versions/9670b8f28c89_initial.py` creates 3 tables; `a1b2c3d4e5f6` adds `recurring_candidates_json`                     |
 
 ## API
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/health` | Liveness check |
-| `POST` | `/api/analyze/bank/statement` | Upload PDF/Excel/CSV — transactions, insights, recurring candidates |
-| `POST` | `/api/analyze/bank/statement?persist=true` | Same + stores in SQLite; returns cached result on duplicate upload |
-| `POST` | `/api/analyze/bank/summary` | `{"transactions": [...]}` → income/expense/net, per-category, top merchants |
-| `POST` | `/api/export/transactions` | `{"transactions": [...], "format": "csv"}` → streamed CSV or XLSX |
-| `GET` | `/api/statements` | List all persisted statements (ordered by upload time) |
+| Method | Path                                         | Description                                                                 |
+| ------ | -------------------------------------------- | --------------------------------------------------------------------------- |
+| `GET`  | `/api/health`                                | Liveness check                                                              |
+| `POST` | `/api/analyze/bank/statement`                | Upload PDF/Excel/CSV — transactions, insights, recurring candidates         |
+| `POST` | `/api/analyze/bank/statement?persist=true`   | Same + stores in SQLite; SHA-256 dedup returns cached result on duplicate   |
+| `POST` | `/api/analyze/bank/summary`                  | `{"transactions": [...]}` → income/expense/net, per-category, top merchants |
+| `POST` | `/api/export/transactions`                   | `{"transactions": [...], "format": "csv"}` → streamed CSV or XLSX           |
+| `GET`  | `/api/statements`                            | Paginated list of persisted statements (ordered by upload time)             |
+| `GET`  | `/api/statements/compare?account_number=X`   | Month-over-month income/expense/net/delta per calendar month                |
+| `GET`  | `/api/statements/recurring?account_number=X` | Cross-statement confirmed recurring merchants (≥2 of last 3 statements)     |
+| `GET`  | `/api/statements/{id}/transactions`          | Paginated transaction list for a stored statement                           |
 
 ```bash
 curl -X POST http://localhost:8000/api/analyze/bank/statement -F "file=@statement.xlsx"
 curl -X POST "http://localhost:8000/api/analyze/bank/statement?persist=true" -F "file=@statement.xlsx"
+curl "http://localhost:8000/api/statements/compare?account_number=XXXX1234"
+curl "http://localhost:8000/api/statements/recurring?account_number=XXXX1234"
 curl http://localhost:8000/api/statements
 curl http://localhost:8000/api/health
 ```
@@ -97,14 +106,14 @@ Both regex and LLM paths produce identical human-readable labels via `CANONICAL_
 
 ```bash
 cd backend
-pytest          # ~38 tests
+pytest          # ~46 tests
 pytest -v       # verbose
 pytest -k "test_upi"    # filter
 ```
 
-Tests use `ASGITransport` (httpx in-process, no live server). In-memory SQLite for persistence tests — no migration needed. CI runs on every push via `.github/workflows/test.yml`.
+Tests use `ASGITransport` (httpx in-process, no live server). In-memory SQLite with `StaticPool` for persistence tests — fixture session and HTTP client share the same connection. CI runs on every push via `.github/workflows/test.yml`.
 
-**Test files:** `test_health`, `test_analyze`, `test_summary`, `test_llm_enricher`, `test_insights`, `test_dedup`, `test_export`, `test_persistence`
+**Test files:** `test_health`, `test_analyze`, `test_summary`, `test_llm_enricher`, `test_insights`, `test_dedup`, `test_export`, `test_persistence`, `test_comparison`, `test_recurring`
 
 ## Notes
 
@@ -115,4 +124,4 @@ Tests use `ASGITransport` (httpx in-process, no live server). In-memory SQLite f
 
 ---
 
-*Architecture: `../docs/architecture.md` · Tech debt: `../docs/tech-debt.md` · ADR-002: `../docs/adr-002-persistence.md` · AI workflow: `../CLAUDE.md`*
+_Architecture: `../docs/architecture.md` · Tech debt: `../docs/tech-debt.md` · ADR-002: `../docs/adr-002-persistence.md` · AI workflow: `../CLAUDE.md`_
