@@ -98,6 +98,35 @@ class TopMerchant(BaseModel):
     count: int
 
 
+class MonthSummary(BaseModel):
+    month: str  # "YYYY-MM"
+    income: float
+    expenses: float
+    net: float
+    transaction_count: int
+    top_category: Optional[str] = None
+    delta_expenses_pct: Optional[float] = None  # % change vs. previous month; null for first month
+
+
+class ComparisonResponse(BaseModel):
+    account_number: str
+    months: list[MonthSummary]
+    total_months: int
+
+
+class ConfirmedRecurringItem(BaseModel):
+    merchant: str
+    statement_count: int
+    avg_amount: float
+    last_seen: Optional[str] = None
+
+
+class RecurringResponse(BaseModel):
+    account_number: str
+    confirmed_recurring: List[ConfirmedRecurringItem]
+    requires_statements: int = 2
+
+
 class SummaryResponse(BaseModel):
     total_income: float
     total_expenses: float

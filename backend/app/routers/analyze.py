@@ -85,7 +85,13 @@ async def analyze_statement(
             )
 
         if persist:
-            save_statement(session, file_hash, file.filename, result)
+            save_statement(
+                session,
+                file_hash,
+                file.filename,
+                result,
+                recurring_candidates=result.get("result", {}).get("recurring_candidates", []),
+            )
 
         return result
     except HTTPException:

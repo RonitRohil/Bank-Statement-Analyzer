@@ -1,4 +1,5 @@
 import io
+import re
 from typing import Literal
 
 import pandas as pd
@@ -21,6 +22,8 @@ class ExportRequest(BaseModel):
 def export_transactions(req: ExportRequest):
     if not req.transactions:
         raise HTTPException(status_code=400, detail="No transactions to export")
+
+    safe_name = re.sub(r"[^\w\-.]", "_", req.filename)
 
     rows = []
     for txn in req.transactions:
@@ -52,9 +55,7 @@ def export_transactions(req: ExportRequest):
         return StreamingResponse(
             iter([output.getvalue()]),
             media_type="text/csv",
-            headers={
-                "Content-Disposition": f'attachment; filename="{req.filename}.csv"'
-            },
+            headers={"Content-Disposition": f'attachment; filename="{safe_name}.csv"'},
         )
 
     # xlsx
@@ -71,5 +72,5 @@ def export_transactions(req: ExportRequest):
     return StreamingResponse(
         iter([output.read()]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{req.filename}.xlsx"'},
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}.xlsx"'},
     )
