@@ -1,6 +1,6 @@
 # Technical Debt Report — Bank Statement Analyzer
 
-**Original:** 2026-05-29 · **Updated:** 2026-06-21 (post-BSA-07 lite recurring detection)
+**Original:** 2026-05-29 · **Updated:** 2026-06-22 (post-Sprint-05: MoM comparison, cross-statement recurring, analyzer split)
 **Reviewed by:** Claude (Cowork)
 **Project:** Bank Statement Analyzer (FastAPI/React/TypeScript)
 
@@ -9,28 +9,95 @@ Status: ✅ Resolved · ⚠️ Reopened · ⬜ Open
 
 ---
 
-## Status Snapshot (post-BSA-19 — Sprint-04)
+## Status Snapshot (post-Sprint-05)
 
-| Resolved ✅                                                               | Open ⬜                                           |
-| ------------------------------------------------------------------------- | ------------------------------------------------- |
-| TD-001–006, 009–015, 017, 020, 021, 022, 024, 027–041; CR-S3-01, CR-S3-05 | TD-007, 008, 018, 019, 023, 025, 026; BSA-07-full |
+| Resolved ✅                                                                                         | Open ⬜                                 |
+| --------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| TD-001–006, 009–015, 017, 020–022, 024, 027–041; BSA-07-full; CR-S3-01, CR-S3-05; CR-S4-01/02/03/05 | TD-018, 019, 023, 025, 026; CR-S5-01–07 |
 
-**34 resolved, 7 open, TD-016 folded into TD-031 (resolved). CR-S3-01 and CR-S3-05 resolved via BSA-07 lite.**
+**38 resolved, 12 open (7 net-new from Sprint-05 review). TD-007/008 and BSA-07-full closed this sprint.**
 
-> BSA-19 (Sprint-04) closed TD-024 at file level (SHA-256 `file_hash` on `StatementDB`). Sprint-04 prompt 03 added row-level dedup inside the parser (`_deduplicate_transactions` on compound key `date+amount+narration+balance`).  
-> Sprint-04 housekeeping (first commit) closed four items: TD-039 (`insights` field added to `AnalysisResult`), TD-040 (`currency` field added to `SummaryResponse`), TD-041 (`backend-v2/` renamed to `backend/` on disk; stale references cleaned from CLAUDE.md), and TD-038 (Category column with AI badge added to `TransactionTable.tsx` — `title="AI-categorized"` for accessibility).  
-> **BSA-13 ✅ (2026-06-21):** CSV/Excel export shipped — `POST /api/export/transactions`, `exportTransactions()` in `api.ts`, "↓ CSV" + "↓ Excel" buttons in `TransactionTable`.  
-> **BSA-07 lite ✅ (2026-06-21):** Recurring detection MVP — `detect_recurring()` + `recurring_candidates` in schema + ↻ pill in merchant table. CV threshold raised to 0.25 (CR-S3-01 ✅). Four `detect_recurring` tests added (CR-S3-05 ✅). Full cross-statement recurring (BSA-07-full) deferred to Sprint-05.
+> **Sprint-05 closed:**
+>
+> - **TD-007/008 ✅** — Analyzer split complete. `parsers/excel_parser.py` (466 lines), `parsers/pdf_parser.py` (286 lines), `enrichers/narration_enricher.py` (271 lines), `scorers/confidence_scorer.py` (32 lines). `analyzer.py` now 299 lines (was ~1,280). All tests pass with no changes.
+> - **BSA-07-full ✅** — Cross-statement recurring: `recurring_candidates_json` column on `StatementDB` (new Alembic migration `a1b2c3d4e5f6`), `get_cross_statement_recurring()` in `crud.py`, `GET /api/statements/recurring`, `SubscriptionsCard.tsx`. 4 tests in `test_recurring.py`.
+> - **BSA-17 ✅** — Month-over-month comparison: `get_monthly_summary()` in `crud.py`, `GET /api/statements/compare`, `MonthSummary` + `ComparisonResponse` schemas, `MonthlyComparison.tsx` (Recharts ComposedChart). 4 tests in `test_comparison.py`.
+> - **CR-S4-01 ✅** — `GET /api/statements` now accepts `limit`/`offset` (default 20, max 100).
+> - **CR-S4-02 ✅** — `GET /api/statements/{id}/transactions` endpoint added (paginated, 404 on unknown).
+> - **CR-S4-03 ✅** — CorrectionDB fingerprint format documented in `crud.py` comment.
+> - **CR-S4-05 ✅** — Export `filename` sanitized via `re.sub(r"[^\w\-.]", "_", ...)` before `Content-Disposition`.
+>
+> **Sprint-05 opened (from code review CR-S5-01 through CR-S5-07):**
+>
+> - CR-S5-01 🟡 — Named route ordering fragile in `statements.py` (comment missing)
+> - CR-S5-02 🟢 — `top_category` from MoM response not rendered in `MonthlyComparison.tsx`
+> - CR-S5-03 🟢 — Parser import coupling: `pdf_parser` imports shared utils from `excel_parser`
+> - CR-S5-04 🟢 — `recurring_candidates_json` staleness not documented in `crud.py`
+> - CR-S5-05 🟠 — `get_monthly_summary()` loads all transactions without a limit
+> - CR-S5-06 🟢 — MoM YAxis formatter breaks on sub-₹1k amounts
+> - CR-S5-07 🟢 — `SubscriptionsCard` monthly total assumes all subscriptions are monthly
 
 ---
 
-## BSA-07-full ⬜ 🟡 Cross-statement recurring detection requires persistence
+---
 
-**Ticket:** BSA-07-full (deferred from BSA-07 lite, Sprint-04)  
-**Score:** Impact 4 · Risk 2 · Effort 4 → **Priority 20**  
-**Description:** `detect_recurring()` (BSA-07 lite) detects recurring merchants within a single statement. True recurring detection — confirming that the same subscription or charge appears across multiple uploaded statements for the same account — requires comparing `recurring_candidates` across `StatementDB` rows. The `StatementDB` persistence layer (BSA-19) is now in place, so the data is available; this is purely a query + aggregation gap.  
-**Fix:** Sprint-05 — aggregate `recurring_candidates` JSON across `StatementDB` rows matching the same `account_number`, group by merchant, and surface cross-statement recurring with confidence scores based on inter-statement frequency.  
-**Effort:** 1–2 days (new CRUD query + API field + UI).
+## Sprint-05 New Debt (opened 2026-06-22, from Sprint-05 code review)
+
+### CR-S5-05 ⬜ 🟠 `get_monthly_summary()` loads all transactions without a cap
+
+**File:** `backend/app/db/crud.py` — `get_monthly_summary()`
+**Description:** For each stored statement matching the account, all `TransactionDB` rows are loaded into memory with no limit. A statement with 2,000 transactions × 12 stored statements = 24,000 objects loaded per comparison query. Fine for a single user with 3 statements today, but will degrade as BSA-20 (history UI) encourages more uploads.
+**Fix:** Add `.limit(5000)` to the inner transaction query, or stream in configurable pages.
+**Effort:** 30 min.
+
+### CR-S5-01 ⬜ 🟡 Named route ordering fragile in `statements.py` — missing comment
+
+**File:** `backend/app/routers/statements.py`
+**Description:** `GET /api/statements/compare` and `GET /api/statements/recurring` must be declared before `GET /api/statements/{statement_id}/transactions`. FastAPI matches first-wins; adding a new named route below the parametric route would cause 422 with no obvious error. Currently correct, but no comment warns future developers.
+**Fix:** Add `# NOTE: named routes (/compare, /recurring) must appear before /{statement_id}` above the parametric route.
+**Effort:** 2 min.
+
+### CR-S5-04 ⬜ 🟢 `recurring_candidates_json` staleness not documented
+
+**File:** `backend/app/db/crud.py` — `save_statement()`
+**Description:** The column stores BSA-07 lite output frozen at upload time. Future threshold changes don't update existing rows. No comment explains this design decision — a developer might try to "refresh" the column and be confused.
+**Fix:** Add comment: `# Frozen at upload time. Re-upload the statement to refresh recurring detection.`
+**Effort:** 2 min.
+
+### CR-S5-03 ⬜ 🟢 `pdf_parser.py` imports shared utilities from `excel_parser.py`
+
+**File:** `backend/app/parsers/pdf_parser.py` imports 5 functions from `excel_parser.py`
+**Description:** Shared parsing utilities (`parse_amount`, `find_column`, `normalize_date`, `deduplicate_transactions`, `clean_column_name`) live in `excel_parser.py` and are imported by `pdf_parser.py`. The naming implies Excel-specific, but the functions are generic. If `excel_parser.py` is restructured, `pdf_parser.py` breaks.
+**Fix:** Create `parsers/utils.py` and move the shared utilities there. Both parsers import from `utils`.
+**Effort:** 1–2h.
+
+### CR-S5-02 ⬜ 🟢 `top_category` from MoM response not rendered in frontend
+
+**File:** `frontend/components/MonthlyComparison.tsx`
+**Description:** `MonthSummary.top_category` is computed and returned by the API but `MonthlyComparison.tsx` doesn't display it. Each month's tile only shows expenses.
+**Fix:** Add `top_category` label below the expense figure in each tile. Handle `null` with a dash.
+**Effort:** 30 min.
+
+### CR-S5-06 ⬜ 🟢 MoM chart YAxis formatter breaks on sub-₹1k amounts
+
+**File:** `frontend/components/MonthlyComparison.tsx`
+**Description:** `tickFormatter={(v) => \`₹${(v / 1000).toFixed(0)}k\`}` produces `₹0k` for any value under ₹1,000.
+**Fix:** Conditional: `v >= 1000 ? \`₹${(v/1000).toFixed(1)}k\` : \`₹${v}\``
+**Effort:** 10 min.
+
+### CR-S5-07 ⬜ 🟢 `SubscriptionsCard` monthly cost total assumes all charges are monthly
+
+**File:** `frontend/components/SubscriptionsCard.tsx`
+**Description:** Sums all `avg_amount` values and labels the total "/mo". A quarterly insurance premium or annual fee inflates the monthly estimate.
+**Fix:** Add caveat text "Est. based on detected frequency" next to the total, or remove the total until cadence detection is implemented.
+**Effort:** 15 min.
+
+---
+
+## BSA-07-full ✅ Cross-statement recurring detection — FIXED 2026-06-22 (Sprint-05)
+
+**Ticket:** BSA-07-full  
+**Fix:** Alembic migration adds `recurring_candidates_json: Optional[str]` to `StatementDB`. `save_statement()` now accepts `recurring_candidates` and serializes to JSON. `get_cross_statement_recurring()` in `crud.py` loads last 3 statements for the account, parses JSON, and confirms merchants appearing in ≥2 as `confirmed_recurring`. `GET /api/statements/recurring` endpoint + `RecurringResponse` schema + `SubscriptionsCard.tsx` frontend component. 4 tests in `test_recurring.py`.
 
 ---
 
@@ -111,20 +178,15 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 ---
 
-### TD-007 ⬜ 🟠 `BankStatementAnalyzer` is one ~1,280-line class
+### TD-007 ✅ 🟠 `BankStatementAnalyzer` monolith split — FIXED 2026-06-22 (Sprint-05 TD-007/008)
 
-**Files:** `backend/app/models/analyzeModel.py`, `backend-v2/app/models/analyzer.py`  
-**Score:** Impact 4 · Risk 4 · Effort 5 → **Priority 8**  
-**Description:** File-type routing, Excel/CSV parsing, PDF parsing, date normalization, narration enrichment, metadata extraction, confidence scoring, and merchant aggregation all live in one class. Can't unit-test any component in isolation. Split target: `parsers/excel_parser.py`, `parsers/pdf_parser.py`, `enrichers/narration_enricher.py`, `scorers/confidence_scorer.py`. Best deferred to BSA-09 (Flask cutover) — at that point there's one canonical copy.  
-**Effort:** 4–6 hours. Deferred to Sprint-02/03.
+**Fix:** `BankStatementAnalyzer` (~1,280 lines) split into four focused modules: `parsers/excel_parser.py` (466 lines), `parsers/pdf_parser.py` (286 lines), `enrichers/narration_enricher.py` (271 lines), `scorers/confidence_scorer.py` (32 lines). `analyzer.py` is now 299 lines — a thin orchestrator + `TransactionPatternTrainer`. External API unchanged; all existing tests pass without modification.
 
 ---
 
-### TD-008 ⬜ 🟠 Column-detection logic duplicated between Excel and PDF paths
+### TD-008 ✅ 🟠 Column-detection duplication addressed — FIXED 2026-06-22 (Sprint-05 TD-007/008)
 
-**Files:** `analyzeModel.py` / `analyzer.py`  
-**Score:** Impact 3 · Risk 3 · Effort 2 → **Priority 24**  
-**Description:** Identical `find_column([...])` sequences and the credit/debit/amount → `(amount, type)` resolution appear independently in `_process_excel_csv()` and `_process_pdf_transactions()`. Extract `_detect_columns(df) -> ColumnMap` and `_resolve_amount(row, cols)`. Removes ~80 lines and eliminates a drift risk. Do alongside TD-007.
+**Fix:** `find_column()`, `parse_amount()`, `normalize_date()`, `deduplicate_transactions()` extracted to `parsers/excel_parser.py` and imported by `pdf_parser.py`. Remaining coupling is tracked as CR-S5-03 (extract to `parsers/utils.py`).
 
 ---
 
@@ -290,78 +352,103 @@ Regression is now caught on every push.
 | TD-001   | CI guard for requirements.txt encoding                    | ✅ Done (BSA-18) |
 | CR-S2-08 | Category taxonomy unified (`categories.py`)               | ✅ Done          |
 
-### Sprint-04 Housekeeping (first commit) — Completed ✅
+### Sprint-04 — Completed ✅
 
-| ID     | Fix                                                 | Status  |
-| ------ | --------------------------------------------------- | ------- |
-| TD-039 | Add `insights` to `AnalysisResult` Pydantic schema  | ✅ Done |
-| TD-040 | Add `currency` to `SummaryResponse`                 | ✅ Done |
-| TD-041 | Rename `backend-v2/` → `backend/`; clean CLAUDE.md  | ✅ Done |
-| TD-038 | AI badge on enriched rows in `TransactionTable.tsx` | ✅ Done |
+| ID          | Fix                                                 | Status  |
+| ----------- | --------------------------------------------------- | ------- |
+| TD-039      | Add `insights` to `AnalysisResult` Pydantic schema  | ✅ Done |
+| TD-040      | Add `currency` to `SummaryResponse`                 | ✅ Done |
+| TD-041      | Rename `backend-v2/` → `backend/`; clean CLAUDE.md  | ✅ Done |
+| TD-038      | AI badge on enriched rows in `TransactionTable.tsx` | ✅ Done |
+| BSA-19      | SQLite persistence via SQLModel + Alembic           | ✅ Done |
+| TD-024      | Row-level transaction deduplication                 | ✅ Done |
+| BSA-13      | CSV / Excel export endpoint                         | ✅ Done |
+| BSA-07 lite | Single-statement recurring detection                | ✅ Done |
 
-### Sprint-04 P0 (remaining)
+### Sprint-05 — Completed ✅
 
-| ID     | Fix                                                 | Est. |
-| ------ | --------------------------------------------------- | ---- |
-| TD-024 | Transaction deduplication (higher risk post-TD-021) | 1–2h |
-| TD-023 | Magic-byte upload validation                        | 1–2h |
+| ID          | Fix                                                                 | Status  |
+| ----------- | ------------------------------------------------------------------- | ------- |
+| CR-S4-01    | Pagination on `GET /api/statements`                                 | ✅ Done |
+| CR-S4-02    | `GET /api/statements/{id}/transactions` endpoint                    | ✅ Done |
+| CR-S4-03    | CorrectionDB fingerprint comment in `crud.py`                       | ✅ Done |
+| CR-S4-05    | Export filename sanitization                                        | ✅ Done |
+| BSA-17      | Month-over-month comparison (endpoint + frontend chart)             | ✅ Done |
+| BSA-07-full | Cross-statement recurring detection + Alembic migration             | ✅ Done |
+| TD-007/008  | Split monolithic analyzer into `parsers/`, `enrichers/`, `scorers/` | ✅ Done |
 
-### Sprint-04/05 (architectural)
+### Sprint-06 Action Plan
 
-| ID     | Fix                             | Est.               |
-| ------ | ------------------------------- | ------------------ |
-| TD-007 | Split monolithic analyzer       | 4–6h               |
-| TD-008 | Extract shared column detection | paired with TD-007 |
-| TD-019 | Docker + compose                | 2h                 |
-| TD-018 | TransactionTable virtualization | 2–3h               |
+| ID       | Fix                                               | Est.   | Priority          |
+| -------- | ------------------------------------------------- | ------ | ----------------- |
+| CR-S5-05 | Add query limit in `get_monthly_summary()`        | 30 min | P0 (housekeeping) |
+| CR-S5-01 | Add route ordering comment in `statements.py`     | 2 min  | P0 (housekeeping) |
+| CR-S5-04 | Staleness comment on `recurring_candidates_json`  | 2 min  | P0 (housekeeping) |
+| BSA-06   | Natural-language Q&A over transaction history     | 4–6h   | P0                |
+| BSA-20   | Statement history UI (browse + reload from DB)    | 3–4h   | P0                |
+| BSA-16   | Category-correction learning loop                 | 3–4h   | P1                |
+| TD-023   | Magic-byte upload validation                      | 1–2h   | P1                |
+| TD-018   | TransactionTable virtualization                   | 2–3h   | P1                |
+| CR-S5-03 | Extract `parsers/utils.py` for shared utilities   | 1–2h   | P2                |
+| CR-S5-02 | Surface `top_category` in `MonthlyComparison.tsx` | 30 min | P2                |
+| CR-S5-06 | Fix MoM YAxis formatter for sub-₹1k amounts       | 10 min | P2                |
+| CR-S5-07 | SubscriptionsCard monthly total caveat            | 15 min | P2                |
+| TD-019   | Docker + docker-compose                           | 2–3h   | P2                |
 
 ---
 
 ## Full Item Table
 
-| ID     | Status | Sev | Area        | Description                                                                          |
-| ------ | ------ | --- | ----------- | ------------------------------------------------------------------------------------ |
-| TD-001 | ✅     | 🔴  | Backend     | requirements.txt UTF-16 — CI guard added (BSA-18)                                    |
-| TD-002 | ✅     | 🔴  | Backend     | Config integration vars defined                                                      |
-| TD-003 | ✅     | 🔴  | Backend     | .env.example added                                                                   |
-| TD-004 | ✅     | 🔴  | Backend     | Flask debug env-controlled                                                           |
-| TD-005 | ✅     | 🔴  | Backend     | Uploaded files cleaned up                                                            |
-| TD-006 | ✅     | 🟠  | Backend     | Dead classes removed                                                                 |
-| TD-007 | ⬜     | 🟠  | Backend     | Monolithic 1,280-line model                                                          |
-| TD-008 | ⬜     | 🟠  | Backend     | Column detection duplicated                                                          |
-| TD-009 | ✅     | 🟠  | Backend     | sklearn imports removed                                                              |
-| TD-010 | ✅     | 🟠  | Frontend    | API URL via env var                                                                  |
-| TD-011 | ✅     | 🟠  | Backend     | File size/ext validation (ext-only)                                                  |
-| TD-012 | ✅     | 🟡  | Backend     | logging replaces print                                                               |
-| TD-013 | ✅     | 🟡  | Backend     | Double assignment fixed                                                              |
-| TD-014 | ✅     | 🟡  | Backend     | Dead vars removed                                                                    |
-| TD-015 | ✅     | 🟡  | Backend     | PDF confidence_score added                                                           |
-| TD-016 | ✅     | 🟠  | Testing     | Folded into TD-031 (Flask + FastAPI suites both exist)                               |
-| TD-017 | ✅     | 🟡  | Backend     | CORS default tightened (Flask)                                                       |
-| TD-018 | ⬜     | 🟡  | Frontend    | Table renders all rows                                                               |
-| TD-019 | ⬜     | 🟢  | Infra       | No Docker                                                                            |
-| TD-020 | ✅     | 🟢  | Repo        | .gitIgnore → .gitignore                                                              |
-| TD-021 | ✅     | 🟠  | Backend     | Multi-page PDF rows dropped                                                          |
-| TD-022 | ✅     | 🟠  | Backend     | Dead Pennyless fn deleted (Flask)                                                    |
-| TD-023 | ⬜     | 🟡  | Backend     | Validation trusts extension not bytes                                                |
-| TD-024 | ✅     | 🟡  | Backend     | No transaction deduplication — file-level (BSA-19) + row-level (Sprint-04 prompt 03) |
-| TD-025 | ⬜     | 🟡  | Backend     | txn_reference regex over-greedy                                                      |
-| TD-026 | ⬜     | 🟡  | Backend     | Confidence penalizes balance-less formats                                            |
-| TD-027 | ✅     | 🟡  | Backend     | /api/health added to Flask                                                           |
-| TD-028 | ✅     | 🔴  | FastAPI     | reload=True hardcoded in run.py                                                      |
-| TD-029 | ✅     | 🔴  | FastAPI     | Dead `import requests` + dep in requirements                                         |
-| TD-030 | ✅     | 🟠  | FastAPI     | CORS wildcards with allow_credentials=True                                           |
-| TD-031 | ✅     | 🟠  | FastAPI     | FastAPI integration tests added (BSA-10)                                             |
-| TD-032 | ✅     | 🟡  | FastAPI     | UPLOAD_DIR is cwd-relative, not file-relative                                        |
-| TD-033 | ✅     | 🔴  | FastAPI/LLM | Enricher double-indexes results onto wrong txn — fixed Sprint-03                     |
-| TD-034 | ✅     | 🟠  | FastAPI/LLM | Enrichment runs after aggregates computed — fixed Sprint-03                          |
-| TD-035 | ✅     | 🟠  | FastAPI/LLM | Enrichment bounded — Semaphore + wait_for + cap — fixed Sprint-03                    |
-| TD-036 | ✅     | 🟠  | FastAPI     | Summary endpoint accepts untyped list[dict] — fixed Sprint-03                        |
-| TD-037 | ✅     | 🟠  | Frontend    | Stale localhost:5000 strings after cutover — fixed Sprint-03                         |
-| TD-038 | ✅     | 🟡  | Frontend    | Category column + AI badge on LLM-enriched rows — done Sprint-04                     |
-| TD-039 | ✅     | 🟡  | FastAPI     | `insights` added to AnalysisResult Pydantic schema — done Sprint-04                  |
-| TD-040 | ✅     | 🟢  | FastAPI     | `currency: str = "INR"` added to SummaryResponse — done Sprint-04                    |
-| TD-041 | ✅     | 🟢  | Repo        | backend-v2 → backend rename complete + CLAUDE.md cleaned Sprint-04                   |
+| ID       | Status | Sev | Area        | Description                                                                          |
+| -------- | ------ | --- | ----------- | ------------------------------------------------------------------------------------ |
+| TD-001   | ✅     | 🔴  | Backend     | requirements.txt UTF-16 — CI guard added (BSA-18)                                    |
+| TD-002   | ✅     | 🔴  | Backend     | Config integration vars defined                                                      |
+| TD-003   | ✅     | 🔴  | Backend     | .env.example added                                                                   |
+| TD-004   | ✅     | 🔴  | Backend     | Flask debug env-controlled                                                           |
+| TD-005   | ✅     | 🔴  | Backend     | Uploaded files cleaned up                                                            |
+| TD-006   | ✅     | 🟠  | Backend     | Dead classes removed                                                                 |
+| TD-007   | ✅     | 🟠  | Backend     | Monolithic 1,280-line model — split Sprint-05                                        |
+| TD-008   | ✅     | 🟠  | Backend     | Column detection duplicated — addressed Sprint-05 (CR-S5-03 tracks remaining work)   |
+| TD-009   | ✅     | 🟠  | Backend     | sklearn imports removed                                                              |
+| TD-010   | ✅     | 🟠  | Frontend    | API URL via env var                                                                  |
+| TD-011   | ✅     | 🟠  | Backend     | File size/ext validation (ext-only)                                                  |
+| TD-012   | ✅     | 🟡  | Backend     | logging replaces print                                                               |
+| TD-013   | ✅     | 🟡  | Backend     | Double assignment fixed                                                              |
+| TD-014   | ✅     | 🟡  | Backend     | Dead vars removed                                                                    |
+| TD-015   | ✅     | 🟡  | Backend     | PDF confidence_score added                                                           |
+| TD-016   | ✅     | 🟠  | Testing     | Folded into TD-031 (Flask + FastAPI suites both exist)                               |
+| TD-017   | ✅     | 🟡  | Backend     | CORS default tightened (Flask)                                                       |
+| TD-018   | ⬜     | 🟡  | Frontend    | Table renders all rows                                                               |
+| TD-019   | ⬜     | 🟢  | Infra       | No Docker                                                                            |
+| TD-020   | ✅     | 🟢  | Repo        | .gitIgnore → .gitignore                                                              |
+| TD-021   | ✅     | 🟠  | Backend     | Multi-page PDF rows dropped                                                          |
+| TD-022   | ✅     | 🟠  | Backend     | Dead Pennyless fn deleted (Flask)                                                    |
+| TD-023   | ⬜     | 🟡  | Backend     | Validation trusts extension not bytes                                                |
+| TD-024   | ✅     | 🟡  | Backend     | No transaction deduplication — file-level (BSA-19) + row-level (Sprint-04 prompt 03) |
+| TD-025   | ⬜     | 🟡  | Backend     | txn_reference regex over-greedy                                                      |
+| TD-026   | ⬜     | 🟡  | Backend     | Confidence penalizes balance-less formats                                            |
+| TD-027   | ✅     | 🟡  | Backend     | /api/health added to Flask                                                           |
+| TD-028   | ✅     | 🔴  | FastAPI     | reload=True hardcoded in run.py                                                      |
+| TD-029   | ✅     | 🔴  | FastAPI     | Dead `import requests` + dep in requirements                                         |
+| TD-030   | ✅     | 🟠  | FastAPI     | CORS wildcards with allow_credentials=True                                           |
+| TD-031   | ✅     | 🟠  | FastAPI     | FastAPI integration tests added (BSA-10)                                             |
+| TD-032   | ✅     | 🟡  | FastAPI     | UPLOAD_DIR is cwd-relative, not file-relative                                        |
+| TD-033   | ✅     | 🔴  | FastAPI/LLM | Enricher double-indexes results onto wrong txn — fixed Sprint-03                     |
+| TD-034   | ✅     | 🟠  | FastAPI/LLM | Enrichment runs after aggregates computed — fixed Sprint-03                          |
+| TD-035   | ✅     | 🟠  | FastAPI/LLM | Enrichment bounded — Semaphore + wait_for + cap — fixed Sprint-03                    |
+| TD-036   | ✅     | 🟠  | FastAPI     | Summary endpoint accepts untyped list[dict] — fixed Sprint-03                        |
+| TD-037   | ✅     | 🟠  | Frontend    | Stale localhost:5000 strings after cutover — fixed Sprint-03                         |
+| TD-038   | ✅     | 🟡  | Frontend    | Category column + AI badge on LLM-enriched rows — done Sprint-04                     |
+| TD-039   | ✅     | 🟡  | FastAPI     | `insights` added to AnalysisResult Pydantic schema — done Sprint-04                  |
+| TD-040   | ✅     | 🟢  | FastAPI     | `currency: str = "INR"` added to SummaryResponse — done Sprint-04                    |
+| TD-041   | ✅     | 🟢  | Repo        | backend-v2 → backend rename complete + CLAUDE.md cleaned Sprint-04                   |
+| CR-S5-01 | ⬜     | 🟡  | Backend     | Route ordering fragile in statements.py — needs comment                              |
+| CR-S5-02 | ⬜     | 🟢  | Frontend    | top_category not rendered in MonthlyComparison.tsx                                   |
+| CR-S5-03 | ⬜     | 🟢  | Backend     | pdf_parser imports shared utils from excel_parser — extract parsers/utils.py         |
+| CR-S5-04 | ⬜     | 🟢  | Backend     | recurring_candidates_json staleness not documented in crud.py                        |
+| CR-S5-05 | ⬜     | 🟠  | Backend     | get_monthly_summary() loads all transactions without a cap                           |
+| CR-S5-06 | ⬜     | 🟢  | Frontend    | MoM YAxis formatter breaks on sub-₹1k amounts                                        |
+| CR-S5-07 | ⬜     | 🟢  | Frontend    | SubscriptionsCard monthly total assumes all subscriptions are monthly                |
 
 ---
 
