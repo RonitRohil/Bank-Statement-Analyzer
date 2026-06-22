@@ -105,6 +105,20 @@ export async function getConfirmedRecurring(accountNumber: string): Promise<{ co
   return res.json();
 }
 
+export async function askQuestion(question: string, accountNumber?: string) {
+  const res = await fetch(`${API_BASE}/api/qa/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question, account_number: accountNumber ?? null }),
+  });
+  if (!res.ok) throw new Error(`Q&A failed: ${res.status}`);
+  return res.json() as Promise<{
+    answer: string;
+    tool_used: string;
+    data_points: number;
+  }>;
+}
+
 export const getSummary = async (
   transactions: Transaction[],
 ): Promise<SummaryResponse> => {

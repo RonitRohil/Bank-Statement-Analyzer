@@ -11,6 +11,7 @@ import { InsightsStrip } from "./components/InsightsStrip";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import MonthlyComparison from "./components/MonthlyComparison";
 import SubscriptionsCard from "./components/SubscriptionsCard";
+import QAChat from "./components/QAChat";
 import { LayoutDashboard, RefreshCw } from "lucide-react";
 
 const App: React.FC = () => {
@@ -185,6 +186,12 @@ const App: React.FC = () => {
             {confirmedRecurring.length > 0 && (
               <ErrorBoundary>
                 <SubscriptionsCard subscriptions={confirmedRecurring} />
+              </ErrorBoundary>
+            )}
+
+            {persist && (
+              <ErrorBoundary>
+                <QAChat accountNumber={data.account_info?.account_number ?? undefined} />
               </ErrorBoundary>
             )}
 

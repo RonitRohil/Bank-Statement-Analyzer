@@ -5,6 +5,33 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-22 — Sprint-06: BSA-06 — Natural-language Q&A over transaction history
+
+**Type:** Feature
+**Task:** BSA-06 (deferred from Sprint-02; depends on BSA-19 persistence + CR-S4-02 transactions endpoint)
+
+Adds a tool-calling Q&A service that lets users ask plain-English questions about their stored transactions. The LLM picks which SQL query to run, we execute it, and the LLM summarizes the result in 1–3 sentences. Two Ollama round-trips per question; no embeddings or RAG.
+
+**What was built:**
+
+- `backend/app/services/qa_engine.py` — core engine. Three tools (`query_transactions`, `get_monthly_totals`, `list_statements`). Two-pass `answer_question()` coroutine with 60 s timeout. Graceful degradation when Ollama is unreachable.
+- `backend/app/routers/qa.py` — `POST /api/qa/ask` endpoint. 400 on empty question; always returns `{answer, tool_used, data_points}`.
+- `backend/app/main.py` — registered `qa.router`.
+- `frontend/components/QAChat.tsx` — chat widget with loading skeleton, amber error state, data-points caption. Rendered below `SubscriptionsCard` when `persist === true`.
+- `frontend/services/api.ts` — `askQuestion()` function added.
+- `backend/tests/test_qa.py` — 4 tests (tool-call flow, Ollama down, empty question, direct answer). All pass; full suite green.
+
+**Files affected:**
+- `backend/app/services/qa_engine.py` (new)
+- `backend/app/routers/qa.py` (new)
+- `backend/app/main.py`
+- `frontend/components/QAChat.tsx` (new)
+- `frontend/services/api.ts`
+- `frontend/App.tsx`
+- `backend/tests/test_qa.py` (new)
+
+---
+
 ## 2026-06-22 — Sprint-06 housekeeping: CR-S5-01, CR-S5-04, CR-S5-05
 
 **Type:** Cleanup (first commit of Sprint-06)
