@@ -1,5 +1,6 @@
 import hashlib
 import json
+from collections import defaultdict
 from typing import Optional
 
 from sqlmodel import Session, select
@@ -63,3 +64,74 @@ def save_statement(
     session.commit()
     session.refresh(stmt)
     return stmt
+
+
+def get_monthly_summary(account_number: str, session: Session) -> list[dict]:
+    """Aggregate transactions by calendar month for a given account number."""
+    statements = session.exec(
+        select(StatementDB)
+        .where(StatementDB.account_number == account_number)
+        .order_by(StatementDB.period_from.asc())
+    ).all()
+
+    if not statements:
+        return []
+
+    monthly: dict[str, dict] = {}
+
+    for stmt in statements:
+        txns = session.exec(
+            select(TransactionDB).where(TransactionDB.statement_id == stmt.id)
+        ).all()
+
+        for txn in txns:
+            if not txn.transaction_date:
+                continue
+            month_key = txn.transaction_date[:7]  # "YYYY-MM"
+            if month_key not in monthly:
+                monthly[month_key] = {
+                    "month": month_key,
+                    "income": 0.0,
+                    "expenses": 0.0,
+                    "net": 0.0,
+                    "transaction_count": 0,
+                    "category_totals": defaultdict(float),
+                }
+            m = monthly[month_key]
+            amount = abs(txn.amount or 0.0)
+            txn_type = (txn.transaction_type or "").upper()
+            m["transaction_count"] += 1
+            if txn_type in ("CREDIT", "CR"):
+                m["income"] += amount
+            else:
+                m["expenses"] += amount
+                cats = json.loads(txn.category or "[]")
+                for cat in cats:
+                    m["category_totals"][cat] += amount
+
+    result = []
+    months_sorted = sorted(monthly.keys())
+    for i, month_key in enumerate(months_sorted):
+        m = monthly[month_key]
+        net = round(m["income"] - m["expenses"], 2)
+        top_cat = (
+            max(m["category_totals"], key=m["category_totals"].get)
+            if m["category_totals"]
+            else None
+        )
+        delta = None
+        if i > 0:
+            prev_exp = monthly[months_sorted[i - 1]]["expenses"]
+            if prev_exp > 0:
+                delta = round(((m["expenses"] - prev_exp) / prev_exp) * 100, 1)
+        result.append({
+            "month": month_key,
+            "income": round(m["income"], 2),
+            "expenses": round(m["expenses"], 2),
+            "net": net,
+            "transaction_count": m["transaction_count"],
+            "top_category": top_cat,
+            "delta_expenses_pct": delta,
+        })
+
+    return result

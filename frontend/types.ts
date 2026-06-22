@@ -94,6 +94,22 @@ export interface TopMerchant {
   total: number;
 }
 
+export interface MonthSummary {
+  month: string; // "YYYY-MM"
+  income: number;
+  expenses: number;
+  net: number;
+  transaction_count: number;
+  top_category: string | null;
+  delta_expenses_pct: number | null;
+}
+
+export interface ComparisonResponse {
+  account_number: string;
+  months: MonthSummary[];
+  total_months: number;
+}
+
 export interface SummaryResponse {
   avg_transaction_amount: number;
   by_category: CategoryBreakdown[];

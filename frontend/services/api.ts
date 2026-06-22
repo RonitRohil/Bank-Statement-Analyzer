@@ -1,17 +1,19 @@
-import { ApiResponse, SummaryResponse, Transaction } from "../types";
+import { ApiResponse, ComparisonResponse, SummaryResponse, Transaction } from "../types";
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
-const API_URL = `${API_BASE}/api/analyze/bank/statement`;
 
-export const uploadBankStatement = async (file: File): Promise<ApiResponse> => {
+export const uploadBankStatement = async (file: File, persist = false): Promise<ApiResponse> => {
   const formData = new FormData();
   formData.append("file", file);
+  const url = persist
+    ? `${API_BASE}/api/analyze/bank/statement?persist=true`
+    : `${API_BASE}/api/analyze/bank/statement`;
 
   let response: Response;
 
   // 1. Attempt the network request
   try {
-    response = await fetch(API_URL, {
+    response = await fetch(url, {
       method: "POST",
       body: formData,
     });
@@ -85,6 +87,14 @@ export async function exportTransactions(
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+export async function compareStatements(accountNumber: string): Promise<ComparisonResponse> {
+  const res = await fetch(
+    `${API_BASE}/api/statements/compare?account_number=${encodeURIComponent(accountNumber)}`
+  );
+  if (!res.ok) throw new Error(`Compare failed: ${res.status}`);
+  return res.json();
 }
 
 export const getSummary = async (

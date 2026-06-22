@@ -98,6 +98,22 @@ class TopMerchant(BaseModel):
     count: int
 
 
+class MonthSummary(BaseModel):
+    month: str  # "YYYY-MM"
+    income: float
+    expenses: float
+    net: float
+    transaction_count: int
+    top_category: Optional[str] = None
+    delta_expenses_pct: Optional[float] = None  # % change vs. previous month; null for first month
+
+
+class ComparisonResponse(BaseModel):
+    account_number: str
+    months: list[MonthSummary]
+    total_months: int
+
+
 class SummaryResponse(BaseModel):
     total_income: float
     total_expenses: float

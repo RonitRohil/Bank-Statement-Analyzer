@@ -3,6 +3,7 @@ from pathlib import Path
 
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
 from app.db.crud import find_statement_by_hash, save_statement
@@ -59,7 +60,9 @@ def session():
 def mem_client():
     """HTTP test client backed by an isolated in-memory SQLite — never touches the real DB."""
     engine = create_engine(
-        "sqlite:///:memory:", connect_args={"check_same_thread": False}
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
     )
     SQLModel.metadata.create_all(engine)
 
@@ -181,9 +184,7 @@ async def test_list_statements_pagination(mem_client):
     csv_path = FIXTURES_DIR / "sample.csv"
     file_content = csv_path.read_bytes()
 
-    # Use two distinct filenames to bypass the SHA-256 dedup guard
-    import hashlib
-
+    # Use two distinct file contents to bypass the SHA-256 dedup guard
     content_a = file_content + b"\n# statement-a"
     content_b = file_content + b"\n# statement-b"
 

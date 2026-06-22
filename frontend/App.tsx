@@ -1,6 +1,6 @@
-import React, { useState } from "react";
-import { AnalysisResult, ApiResponse } from "./types";
-import { uploadBankStatement, API_BASE } from "./services/api";
+import React, { useState, useEffect } from "react";
+import { AnalysisResult, ApiResponse, ComparisonResponse } from "./types";
+import { uploadBankStatement, compareStatements, API_BASE } from "./services/api";
 import { FileUpload } from "./components/FileUpload";
 import { AccountOverview } from "./components/AccountOverview";
 import { TransactionTable } from "./components/TransactionTable";
@@ -9,18 +9,31 @@ import { AnalyticsCharts } from "./components/AnalyticsCharts";
 import { SpendingSummary } from "./components/SpendingSummary";
 import { InsightsStrip } from "./components/InsightsStrip";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import MonthlyComparison from "./components/MonthlyComparison";
 import { LayoutDashboard, RefreshCw } from "lucide-react";
 
 const App: React.FC = () => {
   const [data, setData] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [persist, setPersist] = useState<boolean>(false);
+  const [comparisonData, setComparisonData] = useState<ComparisonResponse | null>(null);
+
+  useEffect(() => {
+    if (!data || !persist) return;
+    const accountNumber = data.account_info?.account_number;
+    if (!accountNumber) return;
+    compareStatements(accountNumber)
+      .then(setComparisonData)
+      .catch(() => {});
+  }, [data, persist]);
 
   const handleFileSelect = async (file: File) => {
     setLoading(true);
     setError(null);
+    setComparisonData(null);
     try {
-      const response: ApiResponse = await uploadBankStatement(file);
+      const response: ApiResponse = await uploadBankStatement(file, persist);
       if (response.success === 1 && response.result) {
         setData(response.result);
       } else {
@@ -52,6 +65,7 @@ const App: React.FC = () => {
   const handleReset = () => {
     setData(null);
     setError(null);
+    setComparisonData(null);
   };
 
   return (
@@ -100,6 +114,15 @@ const App: React.FC = () => {
               error={error}
               onDismissError={() => setError(null)}
             />
+            <label className="mt-4 flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={persist}
+                onChange={(e) => setPersist(e.target.checked)}
+                className="w-4 h-4 accent-indigo-600"
+              />
+              Save to history (enables month-over-month comparison)
+            </label>
           </div>
         )}
 
@@ -143,6 +166,15 @@ const App: React.FC = () => {
                 recurringCandidates={data.recurring_candidates ?? []}
               />
             </ErrorBoundary>
+
+            {comparisonData && (
+              <ErrorBoundary>
+                <MonthlyComparison
+                  months={comparisonData.months}
+                  accountNumber={comparisonData.account_number}
+                />
+              </ErrorBoundary>
+            )}
 
             <ErrorBoundary>
               <TransactionTable transactions={data.transactions} />
