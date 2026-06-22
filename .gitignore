@@ -23,3 +23,6 @@ dist/
 node_modules/
 frontend/dist/
 statements/
+*.db
+*.db-shm
+*.db-wal

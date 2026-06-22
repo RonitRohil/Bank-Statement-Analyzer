@@ -1,6 +1,21 @@
 import React, { useState, useEffect } from "react";
-import { AnalysisResult, ApiResponse, ComparisonResponse } from "./types";
-import { uploadBankStatement, compareStatements, getConfirmedRecurring, API_BASE } from "./services/api";
+import {
+  AnalysisResult,
+  ApiResponse,
+  ComparisonResponse,
+  StoredStatement,
+  StoredTransactionRaw,
+  Transaction,
+} from "./types";
+import {
+  uploadBankStatement,
+  compareStatements,
+  getConfirmedRecurring,
+  deleteStatement,
+  getStatementTransactions,
+  listStatements,
+  API_BASE,
+} from "./services/api";
 import { FileUpload } from "./components/FileUpload";
 import { AccountOverview } from "./components/AccountOverview";
 import { TransactionTable } from "./components/TransactionTable";
@@ -11,6 +26,8 @@ import { InsightsStrip } from "./components/InsightsStrip";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import MonthlyComparison from "./components/MonthlyComparison";
 import SubscriptionsCard from "./components/SubscriptionsCard";
+import QAChat from "./components/QAChat";
+import HistoryPanel from "./components/HistoryPanel";
 import { LayoutDashboard, RefreshCw } from "lucide-react";
 
 const App: React.FC = () => {
@@ -18,8 +35,110 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [persist, setPersist] = useState<boolean>(false);
-  const [comparisonData, setComparisonData] = useState<ComparisonResponse | null>(null);
-  const [confirmedRecurring, setConfirmedRecurring] = useState<{ merchant: string; statement_count: number; avg_amount: number; last_seen: string | null }[]>([]);
+  const [comparisonData, setComparisonData] =
+    useState<ComparisonResponse | null>(null);
+  const [confirmedRecurring, setConfirmedRecurring] = useState<
+    {
+      merchant: string;
+      statement_count: number;
+      avg_amount: number;
+      last_seen: string | null;
+    }[]
+  >([]);
+  const [storedStatements, setStoredStatements] = useState<StoredStatement[]>(
+    [],
+  );
+  const [historyLoading, setHistoryLoading] = useState<boolean>(false);
+
+  const fetchStatements = () => {
+    listStatements(50)
+      .then(setStoredStatements)
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchStatements();
+  }, []);
+
+  const handleHistoryLoad = (id: number) => {
+    setHistoryLoading(true);
+    setError(null);
+    setComparisonData(null);
+    const statement = storedStatements.find((s) => s.id === id);
+    getStatementTransactions(id)
+      .then((res) => {
+        const txns = res.transactions.map((t: StoredTransactionRaw) => ({
+          ...t,
+          category:
+            typeof t.category === "string"
+              ? (() => {
+                  try {
+                    return JSON.parse(t.category || "[]");
+                  } catch {
+                    return [];
+                  }
+                })()
+              : (t.category ?? []),
+          receiver_details: { account: null, name: null, vpa: null },
+          remarks: [],
+          bank_peer: null,
+          upi_id: null,
+          account: null,
+          narration: t.narration ?? "",
+          transaction_date: t.transaction_date ?? "",
+          transaction_type: (t.transaction_type ?? "DEBIT") as
+            | "CREDIT"
+            | "DEBIT",
+          confidence_score: t.confidence_score ?? 0,
+        })) as Transaction[];
+        setData({
+          account_info: {
+            account_holder: statement?.account_holder ?? null,
+            account_number: statement?.account_number ?? null,
+            bank_name: statement?.bank_name ?? null,
+            branch: null,
+            email: null,
+            ifsc_code: null,
+            phone: null,
+            statement_period: {
+              from: statement?.period_from ?? null,
+              to: statement?.period_to ?? null,
+            },
+          },
+          transactions: txns,
+          confidence_summary: {
+            overall_score: statement?.confidence_overall ?? 0,
+            total_transactions: txns.length,
+            high_confidence_txns: txns.filter(
+              (t) => (t.confidence_score ?? 0) >= 0.8,
+            ).length,
+          },
+          merchant_insights: {},
+          insights: [],
+          recurring_candidates: [],
+        });
+      })
+      .catch((err) => {
+        setError(
+          err instanceof Error ? err.message : "Failed to load statement",
+        );
+      })
+      .finally(() => {
+        setHistoryLoading(false);
+      });
+  };
+
+  const handleHistoryDelete = (id: number) => {
+    deleteStatement(id)
+      .then(() =>
+        setStoredStatements((prev) => prev.filter((s) => s.id !== id)),
+      )
+      .catch((err) => {
+        setError(
+          err instanceof Error ? err.message : "Failed to delete statement",
+        );
+      });
+  };
 
   useEffect(() => {
     if (!data || !persist) return;
@@ -41,6 +160,7 @@ const App: React.FC = () => {
       const response: ApiResponse = await uploadBankStatement(file, persist);
       if (response.success === 1 && response.result) {
         setData(response.result);
+        if (persist) fetchStatements();
       } else {
         // Handle logic errors where HTTP might be 200 but success is 0
         setError(
@@ -129,6 +249,16 @@ const App: React.FC = () => {
               />
               Save to history (enables month-over-month comparison)
             </label>
+            {storedStatements.length > 0 && (
+              <div className="w-full max-w-2xl mt-4">
+                <HistoryPanel
+                  statements={storedStatements}
+                  onLoad={handleHistoryLoad}
+                  onDelete={handleHistoryDelete}
+                  loading={historyLoading}
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -185,6 +315,25 @@ const App: React.FC = () => {
             {confirmedRecurring.length > 0 && (
               <ErrorBoundary>
                 <SubscriptionsCard subscriptions={confirmedRecurring} />
+              </ErrorBoundary>
+            )}
+
+            {persist && (
+              <ErrorBoundary>
+                <QAChat
+                  accountNumber={data.account_info?.account_number ?? undefined}
+                />
+              </ErrorBoundary>
+            )}
+
+            {storedStatements.length > 0 && (
+              <ErrorBoundary>
+                <HistoryPanel
+                  statements={storedStatements}
+                  onLoad={handleHistoryLoad}
+                  onDelete={handleHistoryDelete}
+                  loading={historyLoading}
+                />
               </ErrorBoundary>
             )}
 

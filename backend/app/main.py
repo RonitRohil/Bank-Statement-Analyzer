@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config.settings import settings
 from app.db.database import create_db_and_tables
-from app.routers import health, analyze, export, statements, summary
+from app.routers import health, analyze, corrections, export, statements, summary, qa
 
 logger = logging.getLogger(__name__)
 
@@ -41,12 +41,14 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
 
 app.include_router(health.router)
 app.include_router(analyze.router)
+app.include_router(corrections.router)
 app.include_router(export.router)
 app.include_router(statements.router)
 app.include_router(summary.router)
+app.include_router(qa.router)

@@ -212,3 +212,44 @@ async def test_list_statements_pagination(mem_client):
 
         # The two pages must be different records
         assert d1["statements"][0]["id"] != d2["statements"][0]["id"]
+
+
+async def test_delete_statement(mem_client):
+    csv_path = FIXTURES_DIR / "sample.csv"
+    async with AsyncClient(
+        transport=ASGITransport(app=mem_client), base_url="http://test"
+    ) as client:
+        await client.post(
+            "/api/analyze/bank/statement?persist=true",
+            files={"file": ("sample.csv", csv_path.read_bytes(), "text/csv")},
+        )
+        r_list = await client.get("/api/statements?limit=1&offset=0")
+        statement_id = r_list.json()["statements"][0]["id"]
+
+        r_delete = await client.delete(f"/api/statements/{statement_id}")
+        assert r_delete.status_code == 204
+
+        r_list2 = await client.get("/api/statements?limit=10&offset=0")
+        ids = [s["id"] for s in r_list2.json()["statements"]]
+        assert statement_id not in ids
+
+
+async def test_delete_removes_transactions(mem_client):
+    csv_path = FIXTURES_DIR / "sample.csv"
+    async with AsyncClient(
+        transport=ASGITransport(app=mem_client), base_url="http://test"
+    ) as client:
+        await client.post(
+            "/api/analyze/bank/statement?persist=true",
+            files={"file": ("sample.csv", csv_path.read_bytes(), "text/csv")},
+        )
+        r_list = await client.get("/api/statements?limit=1&offset=0")
+        statement_id = r_list.json()["statements"][0]["id"]
+
+        r_txns_before = await client.get(f"/api/statements/{statement_id}/transactions")
+        assert r_txns_before.status_code == 200
+
+        await client.delete(f"/api/statements/{statement_id}")
+
+        r_txns_after = await client.get(f"/api/statements/{statement_id}/transactions")
+        assert r_txns_after.status_code == 404

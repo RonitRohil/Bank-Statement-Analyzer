@@ -5,6 +5,149 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-22 — Sprint-06: TD-023 — Magic-Byte Upload Validation
+
+**Type:** Security / Bug Fix
+**Task:** TD-023
+
+Adds a second line of defense to the file upload handler: after saving the uploaded file to disk, the leading bytes are checked against known magic signatures before the file is handed to the parser. A `.exe` renamed to `.pdf` (or any other spoofed extension) is now rejected with 400.
+
+**What was built:**
+
+- `MAGIC_BYTES` dict in `backend/app/routers/analyze.py` — maps `.pdf`, `.xlsx`, `.xls` to their expected leading byte sequences. `.csv` is omitted (plain text has no magic bytes).
+- `validate_magic_bytes(file_path, extension) -> bool` — reads the first 8 bytes; returns `True` unconditionally for `.csv`, `False` on byte mismatch or read error.
+- Validation call inserted after `file_path.write_bytes(content)` and before `BankStatementAnalyzer`. On failure, raises `HTTPException(400)`; the existing `finally` block handles file cleanup.
+- Two new tests in `backend/tests/test_analyze.py`: `test_pdf_magic_byte_mismatch_400` (non-PDF content in a `.pdf` file → 400) and `test_csv_no_magic_check` (CSV starting with `%PDF` bytes → 200, check is skipped).
+- No new pip dependencies — uses stdlib `open()` in binary mode.
+
+**Files affected:**
+- `backend/app/routers/analyze.py`
+- `backend/tests/test_analyze.py`
+- `docs/changelog.md`
+
+---
+
+## 2026-06-22 — Sprint-06: TD-018 — TransactionTable Client-Side Pagination
+
+**Type:** Enhancement
+**Task:** TD-018
+
+Adds client-side pagination to `TransactionTable` so large statement uploads (1,000+ rows) don't block the browser rendering all rows at once.
+
+**What was built:**
+
+- `PAGE_SIZE = 50` constant — each page shows 50 transactions.
+- `currentPage` state resets to 1 whenever the `transactions` prop changes (switching statements, re-upload).
+- `pageTransactions` slice computed from `safeTransactions`; the tbody maps over that slice.
+- Global row index (`(currentPage - 1) * PAGE_SIZE + localIndex`) used for `rowStates` keying so category corrections survive page navigation.
+- Pager UI (inside `overflow-x-auto` div, below `</table>`) shows only when `totalPages > 1`: "Showing X–Y of N", Prev/Next buttons with disabled states, current page indicator.
+- Export buttons (`↓ CSV`, `↓ Excel`) still pass `safeTransactions` (all rows), not the page slice.
+- No new npm dependencies.
+
+**Files affected:**
+- `frontend/components/TransactionTable.tsx`
+
+---
+
+## 2026-06-22 — Sprint-06: BSA-16 — Category-Correction Learning Loop
+
+**Type:** Feature
+**Task:** BSA-16
+
+Wires up the `CorrectionDB` table (created in Sprint-04) with a POST endpoint to store user corrections, a correction-override pass in the analyze pipeline, and a "Fix" button in the transaction table.
+
+**What was built:**
+
+- `backend/app/db/crud.py` — `fingerprint_transaction()` (SHA-256 of `date:amount:narration[:100]`, normalized), `save_correction()` (upsert by fingerprint), `get_correction()` (lookup). Replaced the placeholder fingerprint comment with the live implementation. `CorrectionDB` now imported at module level.
+- `backend/app/routers/corrections.py` (new) — `POST /api/corrections` (201). Validates category against `CANONICAL_CATEGORIES`, computes fingerprint, upserts correction. Returns fingerprint + corrected category.
+- `backend/app/main.py` — `corrections.router` registered.
+- `backend/app/routers/analyze.py` — Correction-override pass added inside the `persist=True` branch, after `enrich_with_llm()` and before `save_statement()`. Applies stored category/merchant overrides per transaction fingerprint. Stateless (no-persist) path is unchanged.
+- `frontend/services/api.ts` — `submitCorrection()` added: `POST /api/corrections`.
+- `frontend/components/TransactionTable.tsx` — "✏ Fix" link-button per row in the Category column. On click: inline dropdown with all 16 canonical categories. On select: calls `submitCorrection()`; on success shows "📌 Corrected" badge and updates displayed category; on error shows red inline error.
+- `backend/tests/test_corrections.py` (new) — 6 tests: 201 on valid correction, upsert (second category wins), 422 on unknown category, `get_correction` returns None for unknown fingerprint, fingerprint determinism, session-level upsert.
+
+**Files affected:**
+- `backend/app/db/crud.py`
+- `backend/app/routers/corrections.py` (new)
+- `backend/app/main.py`
+- `backend/app/routers/analyze.py`
+- `frontend/services/api.ts`
+- `frontend/components/TransactionTable.tsx`
+- `backend/tests/test_corrections.py` (new)
+
+---
+
+## 2026-06-22 — Sprint-06: BSA-20 — Statement History UI + DELETE endpoint
+
+**Type:** Feature
+**Task:** BSA-20
+
+Adds `DELETE /api/statements/{id}` endpoint and a `HistoryPanel` frontend component so users can browse, load, and delete their past uploads.
+
+**What was built:**
+
+- `backend/app/routers/statements.py` — `DELETE /api/statements/{statement_id}` (204). Deletes `TransactionDB` rows before `StatementDB` row for FK safety. Returns 404 on unknown ID.
+- `backend/app/main.py` — Added "DELETE" to CORS `allow_methods`.
+- `frontend/components/HistoryPanel.tsx` (new) — Collapsible card listing stored statements. Per-row Load (with spinner) and Delete (with inline confirmation). Client-side pagination: 10 rows, "Show more". Empty-state message.
+- `frontend/services/api.ts` — `deleteStatement()`, `getStatementTransactions()`, `listStatements()` added.
+- `frontend/types.ts` — `StoredStatement` interface added.
+- `frontend/App.tsx` — `storedStatements` + `historyLoading` state; `fetchStatements` on mount and after persist uploads; `handleHistoryLoad` normalizes DB transactions (parses JSON category, fills missing fields) then sets `data` state; `handleHistoryDelete` removes entry optimistically. `HistoryPanel` rendered in empty state and in dashboard below QAChat.
+- `backend/tests/test_persistence.py` — `test_delete_statement` and `test_delete_removes_transactions` added.
+
+**Files affected:**
+- `backend/app/routers/statements.py`
+- `backend/app/main.py`
+- `frontend/components/HistoryPanel.tsx` (new)
+- `frontend/services/api.ts`
+- `frontend/types.ts`
+- `frontend/App.tsx`
+- `backend/tests/test_persistence.py`
+
+---
+
+## 2026-06-22 — Sprint-06: BSA-06 — Natural-language Q&A over transaction history
+
+**Type:** Feature
+**Task:** BSA-06 (deferred from Sprint-02; depends on BSA-19 persistence + CR-S4-02 transactions endpoint)
+
+Adds a tool-calling Q&A service that lets users ask plain-English questions about their stored transactions. The LLM picks which SQL query to run, we execute it, and the LLM summarizes the result in 1–3 sentences. Two Ollama round-trips per question; no embeddings or RAG.
+
+**What was built:**
+
+- `backend/app/services/qa_engine.py` — core engine. Three tools (`query_transactions`, `get_monthly_totals`, `list_statements`). Two-pass `answer_question()` coroutine with 60 s timeout. Graceful degradation when Ollama is unreachable.
+- `backend/app/routers/qa.py` — `POST /api/qa/ask` endpoint. 400 on empty question; always returns `{answer, tool_used, data_points}`.
+- `backend/app/main.py` — registered `qa.router`.
+- `frontend/components/QAChat.tsx` — chat widget with loading skeleton, amber error state, data-points caption. Rendered below `SubscriptionsCard` when `persist === true`.
+- `frontend/services/api.ts` — `askQuestion()` function added.
+- `backend/tests/test_qa.py` — 4 tests (tool-call flow, Ollama down, empty question, direct answer). All pass; full suite green.
+
+**Files affected:**
+- `backend/app/services/qa_engine.py` (new)
+- `backend/app/routers/qa.py` (new)
+- `backend/app/main.py`
+- `frontend/components/QAChat.tsx` (new)
+- `frontend/services/api.ts`
+- `frontend/App.tsx`
+- `backend/tests/test_qa.py` (new)
+
+---
+
+## 2026-06-22 — Sprint-06 housekeeping: CR-S5-01, CR-S5-04, CR-S5-05
+
+**Type:** Cleanup (first commit of Sprint-06)
+**Items closed:** CR-S5-05, CR-S5-01, CR-S5-04
+
+- **CR-S5-05:** Added `.limit(5000)` to inner transaction query in `get_monthly_summary()` — prevents unbounded memory load as statement archive grows.
+- **CR-S5-01:** Added route ordering comment above `/{statement_id}` in `statements.py` — warns future developers not to add named routes below the parametric route.
+- **CR-S5-04:** Added staleness comment on `recurring_candidates_json` assignment in `save_statement()` — documents the frozen-at-upload-time design intent.
+
+**Files affected:**
+
+- `backend/app/db/crud.py`
+- `backend/app/routers/statements.py`
+
+---
+
 ## 2026-06-22 — Sprint-05 close-out: study doc, code review, tech-debt update, Sprint-06 plan
 
 **Type:** Documentation / review (Cowork session — no code changes)

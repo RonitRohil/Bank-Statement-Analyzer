@@ -61,6 +61,30 @@ def get_recurring_subscriptions(
     )
 
 
+# NOTE: Named routes (/compare, /recurring) MUST appear above this parametric route.
+# FastAPI matches first-wins — "compare" would be cast to int and return 422 if below.
+@router.delete("/api/statements/{statement_id}", status_code=204)
+def delete_statement(
+    statement_id: int,
+    session: Session = Depends(get_session),
+):
+    """Delete a stored statement and all its associated transactions."""
+    stmt = session.get(StatementDB, statement_id)
+    if not stmt:
+        raise HTTPException(status_code=404, detail=f"Statement {statement_id} not found")
+
+    # Delete child rows first (FK safety — SQLite doesn't enforce FKs by default)
+    txns = session.exec(
+        select(TransactionDB).where(TransactionDB.statement_id == statement_id)
+    ).all()
+    for txn in txns:
+        session.delete(txn)
+
+    session.delete(stmt)
+    session.commit()
+    # 204 No Content — no return value
+
+
 @router.get("/api/statements/{statement_id}/transactions")
 def get_statement_transactions(
     statement_id: int,

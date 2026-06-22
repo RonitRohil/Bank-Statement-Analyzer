@@ -1,18 +1,67 @@
 import React, { useState } from "react";
 import { Transaction } from "../types";
 import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
-import { exportTransactions } from "../services/api";
+import { exportTransactions, submitCorrection } from "../services/api";
+
+const CANONICAL_CATEGORIES = [
+  "Food & Dining",
+  "Shopping",
+  "Entertainment",
+  "Travel",
+  "Utilities",
+  "Healthcare",
+  "Education",
+  "Investment",
+  "Salary",
+  "Transfer",
+  "Refund",
+  "EMI/Loan",
+  "Insurance",
+  "Fuel",
+  "Groceries",
+  "Other",
+];
+
+const PAGE_SIZE = 50;
 
 interface TransactionTableProps {
   transactions: Transaction[];
 }
 
+interface RowState {
+  open: boolean;
+  saving: boolean;
+  corrected: string | null;
+  error: string | null;
+}
+
 export const TransactionTable: React.FC<TransactionTableProps> = ({
   transactions,
 }) => {
-  // Defensive check for transactions array
   const safeTransactions = transactions || [];
   const [exporting, setExporting] = useState(false);
+  const [rowStates, setRowStates] = useState<Record<number, RowState>>({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const [prevTransactions, setPrevTransactions] = useState(transactions);
+
+  if (prevTransactions !== transactions) {
+    setPrevTransactions(transactions);
+    setCurrentPage(1);
+  }
+
+  const getRowState = (index: number): RowState =>
+    rowStates[index] ?? {
+      open: false,
+      saving: false,
+      corrected: null,
+      error: null,
+    };
+
+  const patchRow = (index: number, patch: Partial<RowState>) =>
+    setRowStates((prev) => ({
+      ...prev,
+      [index]: { ...getRowState(index), ...patch },
+    }));
 
   const handleExport = async (format: "csv" | "xlsx") => {
     setExporting(true);
@@ -24,6 +73,31 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
       setExporting(false);
     }
   };
+
+  const handleCategorySelect = async (
+    index: number,
+    txn: Transaction,
+    category: string,
+  ) => {
+    patchRow(index, { saving: true, error: null });
+    try {
+      await submitCorrection(
+        txn.transaction_date,
+        txn.amount ?? 0,
+        txn.narration,
+        category,
+      );
+      patchRow(index, { saving: false, open: false, corrected: category });
+    } catch {
+      patchRow(index, { saving: false, error: "Failed to save — try again" });
+    }
+  };
+
+  const totalPages = Math.ceil(safeTransactions.length / PAGE_SIZE);
+  const pageTransactions = safeTransactions.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
@@ -66,83 +140,171 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-sm">
-            {safeTransactions.map((txn, index) => (
-              <tr
-                key={`${txn.transaction_reference}-${index}`}
-                className="hover:bg-slate-50 transition-colors"
-              >
-                <td className="px-6 py-4 font-medium text-slate-700 whitespace-nowrap">
-                  {txn.transaction_date}
-                </td>
-                <td
-                  className="px-6 py-4 text-slate-600 max-w-xs truncate"
-                  title={txn.narration}
+            {pageTransactions.map((txn, localIndex) => {
+              const index = (currentPage - 1) * PAGE_SIZE + localIndex;
+              const rs = getRowState(index);
+              const displayCategory = rs.corrected
+                ? rs.corrected
+                : txn.category && txn.category.length > 0
+                  ? txn.category.join(", ")
+                  : null;
+
+              return (
+                <tr
+                  key={`${txn.transaction_reference}-${index}`}
+                  className="hover:bg-slate-50 transition-colors"
                 >
-                  {txn.narration}
-                  {txn.receiver_details?.name && (
-                    <div className="text-xs text-slate-400 mt-1">
-                      To: {txn.receiver_details.name}
-                    </div>
-                  )}
-                </td>
-                <td className="px-6 py-4">
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">
-                    {txn.payment_method || "OTH"}
-                  </span>
-                </td>
-                <td className="px-6 py-4">
-                  {txn.category && txn.category.length > 0 ? (
-                    <span className="flex items-center gap-1">
-                      <span className="text-xs text-slate-600">
-                        {txn.category.join(", ")}
+                  <td className="px-6 py-4 font-medium text-slate-700 whitespace-nowrap">
+                    {txn.transaction_date}
+                  </td>
+                  <td
+                    className="px-6 py-4 text-slate-600 max-w-xs truncate"
+                    title={txn.narration}
+                  >
+                    {txn.narration}
+                    {txn.receiver_details?.name && (
+                      <div className="text-xs text-slate-400 mt-1">
+                        To: {txn.receiver_details.name}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">
+                      {txn.payment_method || "OTH"}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-col gap-1">
+                      <span className="flex items-center gap-1 flex-wrap">
+                        {displayCategory ? (
+                          <span className="text-xs text-slate-600">
+                            {displayCategory}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-xs">—</span>
+                        )}
+                        {txn.llm_enriched && !rs.corrected && (
+                          <span
+                            title="AI-categorized"
+                            className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-indigo-100 text-indigo-700"
+                          >
+                            AI
+                          </span>
+                        )}
+                        {rs.corrected && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-700">
+                            📌 Corrected
+                          </span>
+                        )}
+                        {!rs.corrected && (
+                          <button
+                            onClick={() =>
+                              patchRow(index, { open: !rs.open, error: null })
+                            }
+                            className="text-xs text-slate-400 hover:text-indigo-600 underline-offset-2 hover:underline ml-1"
+                          >
+                            ✏ Fix
+                          </button>
+                        )}
                       </span>
-                      {txn.llm_enriched && (
-                        <span
-                          title="AI-categorized"
-                          className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-indigo-100 text-indigo-700"
-                        >
-                          AI
+                      {rs.open && (
+                        <div className="mt-1">
+                          <select
+                            defaultValue=""
+                            disabled={rs.saving}
+                            onChange={(e) => {
+                              if (e.target.value)
+                                handleCategorySelect(
+                                  index,
+                                  txn,
+                                  e.target.value,
+                                );
+                            }}
+                            className="text-xs border border-slate-300 rounded px-1.5 py-1 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:opacity-50"
+                          >
+                            <option value="" disabled>
+                              {rs.saving ? "Saving…" : "Select category…"}
+                            </option>
+                            {CANONICAL_CATEGORIES.map((cat) => (
+                              <option key={cat} value={cat}>
+                                {cat}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      {rs.error && (
+                        <span className="text-xs text-rose-600">
+                          {rs.error}
                         </span>
                       )}
-                    </span>
-                  ) : (
-                    <span className="text-slate-400 text-xs">—</span>
-                  )}
-                </td>
-                <td
-                  className={`px-6 py-4 text-right font-bold ${
-                    txn.transaction_type === "CREDIT"
-                      ? "text-emerald-600"
-                      : "text-rose-600"
-                  }`}
-                >
-                  {txn.transaction_type === "CREDIT" ? "+" : "-"}
-                  {new Intl.NumberFormat("en-IN", {
-                    style: "currency",
-                    currency: "INR",
-                  }).format(txn.amount || 0)}
-                </td>
-                <td className="px-6 py-4 text-right text-slate-700">
-                  {new Intl.NumberFormat("en-IN", {
-                    style: "currency",
-                    currency: "INR",
-                  }).format(txn.balance || 0)}
-                </td>
-                <td className="px-6 py-4 text-center">
-                  {txn.transaction_type === "CREDIT" ? (
-                    <div className="inline-flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full text-xs font-bold">
-                      <ArrowDownLeft size={12} /> Credit
                     </div>
-                  ) : (
-                    <div className="inline-flex items-center gap-1 text-rose-600 bg-rose-50 px-2 py-1 rounded-full text-xs font-bold">
-                      <ArrowUpRight size={12} /> Debit
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td
+                    className={`px-6 py-4 text-right font-bold ${
+                      txn.transaction_type === "CREDIT"
+                        ? "text-emerald-600"
+                        : "text-rose-600"
+                    }`}
+                  >
+                    {txn.transaction_type === "CREDIT" ? "+" : "-"}
+                    {new Intl.NumberFormat("en-IN", {
+                      style: "currency",
+                      currency: "INR",
+                    }).format(txn.amount || 0)}
+                  </td>
+                  <td className="px-6 py-4 text-right text-slate-700">
+                    {new Intl.NumberFormat("en-IN", {
+                      style: "currency",
+                      currency: "INR",
+                    }).format(txn.balance || 0)}
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    {txn.transaction_type === "CREDIT" ? (
+                      <div className="inline-flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full text-xs font-bold">
+                        <ArrowDownLeft size={12} /> Credit
+                      </div>
+                    ) : (
+                      <div className="inline-flex items-center gap-1 text-rose-600 bg-rose-50 px-2 py-1 rounded-full text-xs font-bold">
+                        <ArrowUpRight size={12} /> Debit
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-3 mb-2 px-4 text-sm text-slate-500">
+            <span>
+              Showing {(currentPage - 1) * PAGE_SIZE + 1}–
+              {Math.min(currentPage * PAGE_SIZE, safeTransactions.length)} of{" "}
+              {safeTransactions.length}
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50"
+              >
+                ← Prev
+              </button>
+              <span className="px-3 py-1">
+                {currentPage} / {totalPages}
+              </span>
+              <button
+                onClick={() =>
+                  setCurrentPage((p) => Math.min(totalPages, p + 1))
+                }
+                disabled={currentPage === totalPages}
+                className="px-3 py-1 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50"
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {safeTransactions.length === 0 && (

@@ -5,16 +5,59 @@ from typing import Optional
 
 from sqlmodel import Session, select
 
-from app.db.models import StatementDB, TransactionDB
-
-# --- CorrectionDB fingerprint spec (for BSA-16 learning loop) ---
-# fingerprint = SHA-256 of f"{transaction_date}:{amount}:{narration[:100]}"
-# This must match the key used in save_correction() when BSA-16 is implemented.
-# See: docs/sprint-05-plan.md → BSA-16 in P2 backlog
+from app.db.models import CorrectionDB, StatementDB, TransactionDB
 
 
 def hash_file(file_bytes: bytes) -> str:
     return hashlib.sha256(file_bytes).hexdigest()
+
+
+def fingerprint_transaction(transaction_date: str, amount: float, narration: str) -> str:
+    """
+    Compute the correction fingerprint for a transaction.
+    Format: SHA-256 of "{transaction_date}:{amount}:{narration[:100]}"
+    Normalize narration: strip whitespace, lowercase.
+    This MUST match any client-side fingerprint computation.
+    Any change to this function MUST be backward-compatible or stored corrections will break.
+    """
+    norm_narration = (narration or "").strip().lower()[:100]
+    raw = f"{transaction_date}:{amount}:{norm_narration}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def save_correction(
+    session: Session,
+    fingerprint: str,
+    corrected_category: str,
+    corrected_merchant: str | None = None,
+) -> CorrectionDB:
+    """Upsert a correction keyed by fingerprint."""
+    existing = session.exec(
+        select(CorrectionDB).where(CorrectionDB.fingerprint == fingerprint)
+    ).first()
+    if existing:
+        existing.corrected_category = corrected_category
+        if corrected_merchant is not None:
+            existing.corrected_merchant = corrected_merchant
+        session.add(existing)
+        session.commit()
+        return existing
+    else:
+        correction = CorrectionDB(
+            fingerprint=fingerprint,
+            corrected_category=corrected_category,
+            corrected_merchant=corrected_merchant,
+        )
+        session.add(correction)
+        session.commit()
+        return correction
+
+
+def get_correction(session: Session, fingerprint: str) -> Optional[CorrectionDB]:
+    """Look up a stored correction by fingerprint. Returns None if not found."""
+    return session.exec(
+        select(CorrectionDB).where(CorrectionDB.fingerprint == fingerprint)
+    ).first()
 
 
 def find_statement_by_hash(session: Session, file_hash: str) -> Optional[StatementDB]:
@@ -43,6 +86,8 @@ def save_statement(
         period_from=period.get("from"),
         period_to=period.get("to"),
         confidence_overall=summary.get("overall_score"),
+        # Frozen at upload time. Re-upload the statement to refresh recurring detection.
+        # This is intentional: stores the detection result as it was at upload, independent of future threshold changes.
         recurring_candidates_json=json.dumps(recurring_candidates or []),
     )
     session.add(stmt)
@@ -86,7 +131,9 @@ def get_monthly_summary(account_number: str, session: Session) -> list[dict]:
 
     for stmt in statements:
         txns = session.exec(
-            select(TransactionDB).where(TransactionDB.statement_id == stmt.id)
+            select(TransactionDB)
+            .where(TransactionDB.statement_id == stmt.id)
+            .limit(5000)  # cap: prevents memory spike on very large statements
         ).all()
 
         for txn in txns:
