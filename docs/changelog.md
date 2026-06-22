@@ -5,6 +5,34 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-22 — Sprint-06: BSA-20 — Statement History UI + DELETE endpoint
+
+**Type:** Feature
+**Task:** BSA-20
+
+Adds `DELETE /api/statements/{id}` endpoint and a `HistoryPanel` frontend component so users can browse, load, and delete their past uploads.
+
+**What was built:**
+
+- `backend/app/routers/statements.py` — `DELETE /api/statements/{statement_id}` (204). Deletes `TransactionDB` rows before `StatementDB` row for FK safety. Returns 404 on unknown ID.
+- `backend/app/main.py` — Added "DELETE" to CORS `allow_methods`.
+- `frontend/components/HistoryPanel.tsx` (new) — Collapsible card listing stored statements. Per-row Load (with spinner) and Delete (with inline confirmation). Client-side pagination: 10 rows, "Show more". Empty-state message.
+- `frontend/services/api.ts` — `deleteStatement()`, `getStatementTransactions()`, `listStatements()` added.
+- `frontend/types.ts` — `StoredStatement` interface added.
+- `frontend/App.tsx` — `storedStatements` + `historyLoading` state; `fetchStatements` on mount and after persist uploads; `handleHistoryLoad` normalizes DB transactions (parses JSON category, fills missing fields) then sets `data` state; `handleHistoryDelete` removes entry optimistically. `HistoryPanel` rendered in empty state and in dashboard below QAChat.
+- `backend/tests/test_persistence.py` — `test_delete_statement` and `test_delete_removes_transactions` added.
+
+**Files affected:**
+- `backend/app/routers/statements.py`
+- `backend/app/main.py`
+- `frontend/components/HistoryPanel.tsx` (new)
+- `frontend/services/api.ts`
+- `frontend/types.ts`
+- `frontend/App.tsx`
+- `backend/tests/test_persistence.py`
+
+---
+
 ## 2026-06-22 — Sprint-06: BSA-06 — Natural-language Q&A over transaction history
 
 **Type:** Feature

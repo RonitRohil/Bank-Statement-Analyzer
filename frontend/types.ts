@@ -110,6 +110,17 @@ export interface ComparisonResponse {
   total_months: number;
 }
 
+export interface StoredStatement {
+  id: number;
+  bank_name: string | null;
+  account_holder: string | null;
+  account_number: string | null;
+  period_from: string | null;
+  period_to: string | null;
+  uploaded_at: string;
+  confidence_overall: number | null;
+}
+
 export interface SummaryResponse {
   avg_transaction_amount: number;
   by_category: CategoryBreakdown[];

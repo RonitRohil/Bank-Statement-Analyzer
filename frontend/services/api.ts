@@ -1,8 +1,17 @@
-import { ApiResponse, ComparisonResponse, SummaryResponse, Transaction } from "../types";
+import {
+  ApiResponse,
+  ComparisonResponse,
+  StoredStatement,
+  SummaryResponse,
+  Transaction,
+} from "../types";
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
-export const uploadBankStatement = async (file: File, persist = false): Promise<ApiResponse> => {
+export const uploadBankStatement = async (
+  file: File,
+  persist = false,
+): Promise<ApiResponse> => {
   const formData = new FormData();
   formData.append("file", file);
   const url = persist
@@ -89,17 +98,28 @@ export async function exportTransactions(
   URL.revokeObjectURL(url);
 }
 
-export async function compareStatements(accountNumber: string): Promise<ComparisonResponse> {
+export async function compareStatements(
+  accountNumber: string,
+): Promise<ComparisonResponse> {
   const res = await fetch(
-    `${API_BASE}/api/statements/compare?account_number=${encodeURIComponent(accountNumber)}`
+    `${API_BASE}/api/statements/compare?account_number=${encodeURIComponent(accountNumber)}`,
   );
   if (!res.ok) throw new Error(`Compare failed: ${res.status}`);
   return res.json();
 }
 
-export async function getConfirmedRecurring(accountNumber: string): Promise<{ confirmed_recurring: { merchant: string; statement_count: number; avg_amount: number; last_seen: string | null }[] }> {
+export async function getConfirmedRecurring(
+  accountNumber: string,
+): Promise<{
+  confirmed_recurring: {
+    merchant: string;
+    statement_count: number;
+    avg_amount: number;
+    last_seen: string | null;
+  }[];
+}> {
   const res = await fetch(
-    `${API_BASE}/api/statements/recurring?account_number=${encodeURIComponent(accountNumber)}`
+    `${API_BASE}/api/statements/recurring?account_number=${encodeURIComponent(accountNumber)}`,
   );
   if (!res.ok) return { confirmed_recurring: [] };
   return res.json();
@@ -117,6 +137,31 @@ export async function askQuestion(question: string, accountNumber?: string) {
     tool_used: string;
     data_points: number;
   }>;
+}
+
+export async function deleteStatement(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/statements/${id}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
+}
+
+export async function getStatementTransactions(id: number) {
+  const res = await fetch(
+    `${API_BASE}/api/statements/${id}/transactions?limit=500`,
+  );
+  if (!res.ok) throw new Error(`Failed to load transactions: ${res.status}`);
+  return res.json() as Promise<{
+    statement_id: number;
+    transactions: Transaction[];
+  }>;
+}
+
+export async function listStatements(limit = 50): Promise<StoredStatement[]> {
+  const res = await fetch(`${API_BASE}/api/statements?limit=${limit}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.statements ?? [];
 }
 
 export const getSummary = async (
