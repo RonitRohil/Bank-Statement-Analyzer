@@ -24,6 +24,25 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 ALLOWED_EXTENSIONS = {".pdf", ".csv", ".xlsx", ".xls"}
 MAX_BYTES = settings.max_upload_size_mb * 1024 * 1024
 
+MAGIC_BYTES = {
+    ".pdf": [b"%PDF"],
+    ".xlsx": [b"PK\x03\x04"],   # ZIP-based format (Office Open XML)
+    ".xls": [b"\xd0\xcf\x11\xe0"],  # Compound Document (old Excel binary)
+    # .csv: plain text — no magic byte signature to check
+}
+
+
+def validate_magic_bytes(file_path: Path, extension: str) -> bool:
+    signatures = MAGIC_BYTES.get(extension)
+    if signatures is None:
+        return True  # CSV is plain text — no magic byte signature to check
+    try:
+        with open(file_path, "rb") as f:
+            header = f.read(8)
+        return any(header.startswith(sig) for sig in signatures)
+    except OSError:
+        return False
+
 
 @router.post("/api/analyze/bank/statement", response_model=AnalyzeResponse)
 async def analyze_statement(
@@ -62,6 +81,13 @@ async def analyze_statement(
 
     try:
         file_path.write_bytes(content)
+
+        if not validate_magic_bytes(file_path, suffix):
+            raise HTTPException(
+                status_code=400,
+                detail=f"File content does not match extension '{suffix}'. Upload a real {suffix.upper()} file.",
+            )
+
         result = await asyncio.to_thread(
             lambda: BankStatementAnalyzer(str(file_path)).extract_transactions()
         )

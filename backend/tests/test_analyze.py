@@ -59,6 +59,29 @@ async def test_analyze_rejects_oversized_file(client):
     assert response.status_code == 413
 
 
+async def test_pdf_magic_byte_mismatch_400(client):
+    response = await client.post(
+        "/api/analyze/bank/statement",
+        files={"file": ("fake.pdf", b"this is not a pdf", "application/pdf")},
+    )
+    assert response.status_code == 400
+    assert ".pdf" in response.json()["detail"]
+
+
+async def test_csv_no_magic_check(client):
+    # CSV that happens to start with %PDF bytes — magic check must be skipped for .csv
+    csv_content = (
+        b"%PDF-not-a-real-pdf\n"
+        b"Date,Narration,Debit,Credit,Balance\n"
+        b"2025-01-01,UPI/12345/Test,100.00,,4900.00\n"
+    )
+    response = await client.post(
+        "/api/analyze/bank/statement",
+        files={"file": ("tricky.csv", csv_content, "text/csv")},
+    )
+    assert response.status_code == 200
+
+
 async def test_analyze_transactions_have_required_fields(client):
     csv_path = FIXTURES_DIR / "sample.csv"
     with open(csv_path, "rb") as f:

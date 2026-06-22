@@ -5,6 +5,28 @@ Format: `[Date] — [Type] — [Short description]`
 
 ---
 
+## 2026-06-22 — Sprint-06: TD-023 — Magic-Byte Upload Validation
+
+**Type:** Security / Bug Fix
+**Task:** TD-023
+
+Adds a second line of defense to the file upload handler: after saving the uploaded file to disk, the leading bytes are checked against known magic signatures before the file is handed to the parser. A `.exe` renamed to `.pdf` (or any other spoofed extension) is now rejected with 400.
+
+**What was built:**
+
+- `MAGIC_BYTES` dict in `backend/app/routers/analyze.py` — maps `.pdf`, `.xlsx`, `.xls` to their expected leading byte sequences. `.csv` is omitted (plain text has no magic bytes).
+- `validate_magic_bytes(file_path, extension) -> bool` — reads the first 8 bytes; returns `True` unconditionally for `.csv`, `False` on byte mismatch or read error.
+- Validation call inserted after `file_path.write_bytes(content)` and before `BankStatementAnalyzer`. On failure, raises `HTTPException(400)`; the existing `finally` block handles file cleanup.
+- Two new tests in `backend/tests/test_analyze.py`: `test_pdf_magic_byte_mismatch_400` (non-PDF content in a `.pdf` file → 400) and `test_csv_no_magic_check` (CSV starting with `%PDF` bytes → 200, check is skipped).
+- No new pip dependencies — uses stdlib `open()` in binary mode.
+
+**Files affected:**
+- `backend/app/routers/analyze.py`
+- `backend/tests/test_analyze.py`
+- `docs/changelog.md`
+
+---
+
 ## 2026-06-22 — Sprint-06: TD-018 — TransactionTable Client-Side Pagination
 
 **Type:** Enhancement
